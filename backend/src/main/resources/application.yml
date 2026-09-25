@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: bili-charge-archive
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+server:
+  port: 8080

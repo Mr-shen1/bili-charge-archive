@@ -1,0 +1,48 @@
+services:
+  mysql8:
+    image: mysql:8.4.11@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-bili_charge_archive}
+      MYSQL_USER: ${MYSQL_USER:-bili_dev}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-local-dev-only}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local-dev-root-only}
+    ports:
+      - "127.0.0.1:13306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  spring-app:
+    build:
+      context: ../backend
+    depends_on:
+      mysql8:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${APP_PORT:-18080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  nginx:
+    build:
+      context: ../frontend
+    depends_on:
+      spring-app:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-18081}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  mysql_data:
