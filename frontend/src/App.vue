@@ -71,7 +71,7 @@ const selectedUp = computed(() =>
 const groupNameOf = (id: number | null) =>
   id == null
     ? "未设置"
-    : (groups.value.find((group) => group.id === id)?.name ?? `#${id}`);
+    : (groups.value.find((group) => group.id === id)?.name ?? `群 ID ${id}`);
 const dateOf = (time?: string | null) =>
   time ? new Date(time).toLocaleString("zh-CN") : "暂无";
 
@@ -362,7 +362,7 @@ onMounted(async () => {
           <div v-for="group in groups" :key="group.id" class="list-row">
             <div class="row-main">
               <strong>{{ group.name }}</strong
-              ><small>#{{ group.id }} · Webhook 已加密保存</small
+              ><small>群 ID {{ group.id }} · Webhook 已加密保存</small
               ><small v-if="group.references.length"
                 >引用：{{ group.references.join("、") }}</small
               >
@@ -398,7 +398,12 @@ onMounted(async () => {
             </button>
           </div>
           <div v-if="upPreview" class="preview">
-            <img v-if="upPreview.avatarUrl" :src="upPreview.avatarUrl" alt="" />
+            <img
+              v-if="upPreview.avatarUrl"
+              :src="upPreview.avatarUrl"
+              referrerpolicy="no-referrer"
+              alt=""
+            />
             <div>
               <strong>{{ upPreview.displayName }}</strong
               ><small>UID {{ upPreview.uid }}</small>
@@ -454,7 +459,12 @@ onMounted(async () => {
               run(loadSelected);
             "
           >
-            <img v-if="up.avatarUrl" :src="up.avatarUrl" alt="" /><span
+            <img
+              v-if="up.avatarUrl"
+              :src="up.avatarUrl"
+              referrerpolicy="no-referrer"
+              alt=""
+            /><span
               class="row-main"
               ><strong>{{ up.displayName }}</strong
               ><small
@@ -478,6 +488,7 @@ onMounted(async () => {
             <img
               v-if="selectedUp.avatarUrl"
               :src="selectedUp.avatarUrl"
+              referrerpolicy="no-referrer"
               alt=""
             />
             <div>
