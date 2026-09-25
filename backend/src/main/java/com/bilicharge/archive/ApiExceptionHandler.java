@@ -13,6 +13,12 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 final class ApiExceptionHandler {
+    @ExceptionHandler(AdminException.class)
+    ResponseEntity<ApiError> admin(AdminException error, HttpServletRequest request) {
+        return ResponseEntity.status(error.status()).body(
+                new ApiError(error.code(), error.getMessage(), requestId(request)));
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     ResponseEntity<ApiError> status(ResponseStatusException error, HttpServletRequest request) {
         String code = switch (error.getStatusCode().value()) {

@@ -7,6 +7,9 @@ spring:
     password: ${DB_PASSWORD}
   flyway:
     enabled: true
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
 
 management:
   endpoints:
@@ -28,3 +31,7 @@ app:
     username: ${ADMIN_USERNAME}
     password-bcrypt: ${ADMIN_PASSWORD_BCRYPT}
   monitor-token: ${MONITOR_API_TOKEN}
+  feishu:
+    webhook-key: ${FEISHU_WEBHOOK_ENC_KEY:}
+  bili:
+    cookie: ${BILI_COOKIE:}

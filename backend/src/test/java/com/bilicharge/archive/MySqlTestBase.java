@@ -4,6 +4,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 abstract class MySqlTestBase {
@@ -19,5 +21,8 @@ abstract class MySqlTestBase {
         registry.add("app.admin.username", () -> USERNAME);
         registry.add("app.admin.password-bcrypt", () -> new BCryptPasswordEncoder().encode(PASSWORD));
         registry.add("app.monitor-token", () -> "m1-test-token-32-characters-long!");
+        registry.add("app.feishu.webhook-key", () -> Base64.getEncoder().encodeToString(
+                "m2-test-only-key-32-bytes-long!!".getBytes(StandardCharsets.UTF_8)));
+        registry.add("app.bili.cookie", () -> "");
     }
 }
