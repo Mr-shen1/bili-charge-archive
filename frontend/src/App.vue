@@ -218,7 +218,7 @@ async function createUp() {
     await refresh();
     selectedUid.value = up.uid;
     await loadSelected();
-    notice.value = "UP 已保存并启用；扫描器将在 M4 接入";
+    notice.value = "UP 已保存并启用；监控服务运行时会自动扫描";
   });
 }
 async function updateUp(change: Record<string, unknown>) {
@@ -530,7 +530,7 @@ onMounted(async () => {
               {{ selectedUp.enabled ? "停用 UP" : "重新启用" }}
             </button>
           </div>
-          <p class="hint">扫描器将在 M4 接入；当前启停只保存配置。</p>
+          <p class="hint">监控服务运行时会扫描已启用的 UP；停用后保留已有内容。</p>
         </section>
         <section class="card">
           <div class="section-heading">
