@@ -1,6 +1,6 @@
 # 接口契约
 
-- 状态：M1 已实现登录、会话、CSRF、统一错误与请求 ID；其余业务接口仍为目标契约
+- 状态：M1 安全基础、M2 管理接口和 M3 内部批次接口已实现；其余业务接口仍为目标契约
 - 需求依据：[PRD](PRD.md)；事务与数据关系见[架构](ARCHITECTURE.md)、[数据库](DATABASE.md)
 - Base path：公开 /api；仅 Docker 内网 /internal
 - 所有 B 站 ID 为 JSON 字符串；时间为 UTC ISO 8601（例如 2026-09-25T08:00:00Z）；请求与响应为 UTF-8 JSON
@@ -92,26 +92,36 @@ M2 实现中，两个预览接口的请求体均为 `{ "input": "数字 ID 或�
 | POST /internal/ups/{uid}/ops-events | 提交每小时心跳、每轮错误或进程故障事件 |
 | POST /internal/ups/{uid}/worker-status | 更新进程心跳、扫描开始/成功/错误状态 |
 
-批次请求的概念结构如下；所有评论合计建议不超过 100 条：
+M3 批次请求的实际结构如下；所有评论合计不得超过 100 条，超过时返回 `422 INVALID_BATCH`：
 
 ~~~json
 {
   "items":[
     {
       "dynamic":{"dynamicId":"123","upUid":"456","title":null,"text":"...","publishedAt":"2026-09-25T08:00:00Z","commentOid":"789","commentType":11,"images":[]},
-      "comments":[{"rpid":"101","rootRpid":null,"parentRpid":null,"authorMid":"202","text":"...","publishedAt":"2026-09-25T08:01:00Z","images":[]}],
-      "scanState":{"state":{},"lastCompleteScanAt":null,"lastFullScanAt":null},
-      "eventCandidates":[{"dedupeKey":"dynamic:123","type":"DYNAMIC","text":"...","imageSourceUrls":[]}]
+      "comments":[{"rpid":"101","rootRpid":null,"parentRpid":null,"authorMid":"202","authorName":"示例用户","authorAvatarUrl":null,"authorLevel":0,"text":"...","publishedAt":"2026-09-25T08:01:00Z","likeCount":0,"replyCount":0,"images":[]}],
+      "scanState":{"state":{},"lastCompleteScanAt":null,"lastFullScanAt":null,"fullScanRetryAt":null},
+      "eventCandidates":[
+        {"dedupeKey":"dynamic:123","type":"DYNAMIC","commentRpid":null,"text":"动态通知快照","imageSourceUrls":[]},
+        {"dedupeKey":"comment:123:101","type":"COMMENT","commentRpid":"101","text":"评论通知快照","imageSourceUrls":[]}
+      ]
     }
   ],
-  "baselineCompletedDynamicIds":[]
+  "baselineCompletedDynamicIds":[],
+  "availabilityChanges":[]
 }
 ~~~
 
-Spring 按主键幂等 upsert 内容，仅对首次发现的动态/评论插入唯一事件键；更新扫描状态与入队在同一事务。首次基线分批时事件 ready_at 留空；最后一批将该动态的基线事件放行。请求失败可原样重试，不能先推进扫描状态。事件正文是生成时的快照，未发目标按**当前**路由选群。
+`images` 为按位置排序的来源 URL：`null` 或省略表示本批不更新图片列表，`[]` 表示清空；来源 URL 改变时对应图片重置为待上传，同 URL 保留现有上传状态。`scanState.state` 必须是 JSON 对象，其三个时间字段可为空；每个 `item` 都要带扫描状态。`rootRpid` 和 `parentRpid` 对根评论均为空，对楼中楼均为数字字符串。`is_up` 由服务端对比评论作者 UID 与路径 UP UID，客户端不能指定。
+
+通知候选只接受 `DYNAMIC` 和 `COMMENT`：去重键分别固定为 `dynamic:{dynamicId}` 与 `comment:{dynamicId}:{rpid}`。新发现的动态必须带动态候选；新发现且当前路由可投递的评论必须带评论候选。仅有 UP 群时，普通用户评论照常入库，但不建通知事件。候选正文与图片 URL 在首次入队时形成快照；编辑已存内容不会重建或修改旧事件。候选图片列表省略时使用同条内容的图片列表。
+
+`availabilityChanges` 可单独提交已存动态或评论的明确来源状态：`{"dynamicId":"123","rpid":null,"unavailable":true}` 标记动态，填写 `rpid` 则标记评论；`false` 清除标记。重新抓到的内容快照也会清除其不可用标记。不能仅因动态跌出最新 50 条就提交不可用状态。
+
+Spring 按主键幂等 upsert 内容，仅对首次发现的可投递动态/评论插入唯一事件键；内容、图片元数据、扫描状态、来源状态和入队在同一事务。首次基线分批时事件 `ready_at` 留空；最后一批把该动态 ID 放入 `baselineCompletedDynamicIds`，服务端持久记录完成时间并放行该动态所有未就绪事件。该列表可与 `items` 同批提交，也可单独提交，但目标动态及扫描状态必须已入库。此后新事件直接就绪；重复完成不会重新放行。请求失败可原样重试，不能先推进扫描状态。响应为 `{"data":{"newDynamics":1,"newComments":1,"newEvents":2,"releasedEvents":2}}`，重复提交的新增计数为 0。未发目标在 M7 认领时按**当前**路由选群。
 
 认领只在短数据库事务内完成；飞书 HTTP 调用不在事务中。认领结果包含 leaseUntil；结果接口只接受当前租约持有者，过期或重复确认返回 409。发送成功但确认前崩溃仍可能重复，符合 PRD 的优先不漏发规则。
 
 ## 5. 来源与文档边界
 
-B 站动态及评论接口见原始需求文档中的社区接口参考；正式实现时需用实际账号验证字段和鉴权。固定动态必须核实详情返回 ID、作者 UID 及评论 oid/type，不允许仅凭链接字符串入库。公开接口的具体路径和 JSON 是本实施设计提出的契约，项目目前还没有相应代码。
+B 站动态及评论接口见原始需求文档中的社区接口参考；正式扫描时需用实际账号验证字段和鉴权。固定动态必须核实详情返回 ID、作者 UID 及评论 oid/type，不允许仅凭链接字符串入库。M3 仅接收已核对的批次快照；内容查询、媒体和通知投递接口仍待后续里程碑实现。

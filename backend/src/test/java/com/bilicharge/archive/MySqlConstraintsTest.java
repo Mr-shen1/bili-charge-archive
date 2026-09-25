@@ -22,6 +22,7 @@ class MySqlConstraintsTest extends MySqlTestBase {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('feishu_group','up_account','dynamic_route','dynamic','dynamic_image','comment','comment_image','dynamic_scan_state','notification_event','notification_delivery')", Integer.class)).isEqualTo(10);
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         assertThat(jdbc.queryForObject("SELECT data_type FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name='dynamic' AND column_name='dynamic_id'", String.class)).isEqualTo("varchar");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name='dynamic_scan_state' AND column_name='baseline_completed_at'", Integer.class)).isEqualTo(1);
     }
 
     @Test
