@@ -62,7 +62,8 @@ class AuthHttpTest extends MySqlTestBase {
         HttpHeaders headers = new HttpHeaders();
         headers.add("X-Monitor-Token", "m1-test-token-32-characters-long!");
         ResponseEntity<Map> allowedThroughFilter = http.exchange("/internal/ups", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
-        assertThat(allowedThroughFilter.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(allowedThroughFilter.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(allowedThroughFilter.getBody()).containsKey("data");
     }
 
     private ResponseEntity<Map> login(String password) {

@@ -1,6 +1,6 @@
 # 验收清单
 
-- 状态：目标验收方案；M0～M2 已完成[本地回归验收](ACCEPTANCE_REPORT_M0_M2.md)，M3 的批次事务与失败注入结果见[实施状态](IMPLEMENTATION_STATUS.md)；后续功能仍待实现
+- 状态：目标验收方案；M0～M2 已完成[本地回归验收](ACCEPTANCE_REPORT_M0_M2.md)，M3 的批次事务与失败注入结果见[实施状态](IMPLEMENTATION_STATUS.md)，M4 的采集和进程验收见[M4 验收记录](ACCEPTANCE_REPORT_M4.md)；页面阅读、OSS、通知及上线仍待后续里程碑
 - 依据：[PRD](PRD.md) · [架构](ARCHITECTURE.md) · [数据库](DATABASE.md) · [接口](API.md)
 - 执行方式：开发阶段用受控 B 站响应与飞书测试群做自动化/集成测试；部署阶段再用真实账号与目标服务器做冒烟测试。测试数据中的 B 站 ID 使用字符串，包含大于 JavaScript 安全整数的值。
 

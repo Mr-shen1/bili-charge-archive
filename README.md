@@ -2,11 +2,11 @@
 
 本项目计划将指定 UP 的充电专属文字、图片动态及评论持久化，提供手机优先的只读查询页面，并继续向飞书群发送文字与图片通知。
 
-> 当前状态：M0～M3 已实现并通过本地验证。可以登录手机管理页配置飞书群、UP 与专属动态路由；M3 已提供仅内网可用的批次事务入库接口。自动扫描、内容查询、图片上传和飞书投递仍属于后续里程碑。根目录的原始需求文档、参考图片和 Python 监控脚本是现有资料；docs/ 中的后续功能描述不代表功能已上线。
+> 当前状态：M0～M4 已实现并通过本地阶段验证。可以登录手机管理页配置飞书群、UP 与专属动态路由；Python 扫描器可按 UP 运行，并经内部批次接口保存内容、进度与待发事件。动态/评论查询页、图片上传和飞书投递仍属于后续里程碑。根目录的原始需求文档、参考图片和旧 Python 监控脚本是现有资料；docs/ 中的后续功能描述不代表功能已上线。
 
 ## M0 本地工程骨架
 
-已建立 `backend/`、`frontend/`、`monitor/` 与 `deploy/` 的工程骨架。M1 新增数据库迁移与后端登录保护；M2 增加手机管理页与配置接口；M3 增加带基线放行的内部批次事务接口。监控程序尚未采集。实施进度及本机验证结果见[实施状态](docs/IMPLEMENTATION_STATUS.md)。
+已建立 `backend/`、`frontend/`、`monitor/` 与 `deploy/` 的工程骨架。M1 新增数据库迁移与后端登录保护；M2 增加手机管理页与配置接口；M3 增加带基线放行的内部批次事务接口；M4 实现扫描器、固定目标与每 UP 子进程管理。实施进度及本机验证结果见[实施状态](docs/IMPLEMENTATION_STATUS.md)。
 
 本地工具基线：JDK 21、Node 24.16.0、Python 3.12.10。Windows PowerShell 中分别运行：
 
@@ -35,7 +35,7 @@ curl.exe -i http://127.0.0.1:18081/api/dynamics
 docker compose -f deploy/compose.dev.yaml down
 ~~~
 
-网页 `http://127.0.0.1:18081/` 提供登录和手机管理页；可新增飞书群、预览并配置 UP 与动态专属路由，查看启停和扫描状态。当前保存“启用”状态还不会启动扫描，扫描器属于 M4。健康接口返回 `UP`；未登录访问业务 API 返回带 `requestId` 的 401 JSON。JUnit 测试连接隔离的真实 MySQL 测试库 `bili_charge_archive_m1_test`，没有使用 H2。使用 Compose 默认开发用户时，可在容器启动后从项目根目录创建测试库并授权：
+网页 `http://127.0.0.1:18081/` 提供登录和手机管理页；可新增飞书群、预览并配置 UP 与动态专属路由，查看启停和扫描状态。健康接口返回 `UP`；未登录访问业务 API 返回带 `requestId` 的 401 JSON。JUnit 测试连接隔离的真实 MySQL 测试库 `bili_charge_archive_m1_test`，没有使用 H2。使用 Compose 默认开发用户时，可在容器启动后从项目根目录创建测试库并授权：
 
 ~~~powershell
 docker compose -f deploy/compose.dev.yaml exec -T mysql8 sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root -e "CREATE DATABASE IF NOT EXISTS bili_charge_archive_m1_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON bili_charge_archive_m1_test.* TO ''bili_dev''@''%'';"'
@@ -44,6 +44,17 @@ Set-Location backend
 ~~~
 
 自定义 MySQL 用户时相应调整授权语句，测试库地址和账号也可用 `TEST_DB_URL`、`TEST_DB_USERNAME`、`TEST_DB_PASSWORD` 覆盖。
+
+M4 监控容器默认不随开发服务启动。确认 `deploy/.env` 已配置合法测试 `BILI_COOKIE` 后，可在项目根目录显式启动；它将扫描所有已启用 UP，并为每个 UP 启动一个子进程。首次发现的现存合格内容会入库并形成待发事件；M7 完成前不会向飞书投递。
+
+~~~powershell
+docker compose -f deploy/compose.dev.yaml --profile monitor build monitor
+docker compose -f deploy/compose.dev.yaml --profile monitor up -d monitor
+docker compose -f deploy/compose.dev.yaml --profile monitor ps
+docker compose -f deploy/compose.dev.yaml --profile monitor stop monitor
+~~~
+
+M4 的受控响应与真实 B 站联调结果见 [M4 验收记录](docs/ACCEPTANCE_REPORT_M4.md)。
 
 MySQL 使用本地开发专用默认值；正式部署不得沿用。`.env.example` 只有占位值，不要把实际 Cookie、Webhook 或密钥写入仓库。M0 的 Compose 配置不代表生产配置。
 

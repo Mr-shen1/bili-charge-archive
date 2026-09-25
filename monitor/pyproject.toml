@@ -1,7 +1,7 @@
 [project]
 name = "bili-charge-monitor"
 version = "0.1.0"
-description = "Scanner service scaffold; fetching starts in M4."
+description = "Bilibili charge dynamic scanner and per-UP process manager."
 requires-python = ">=3.12,<3.13"
 dependencies = []
 

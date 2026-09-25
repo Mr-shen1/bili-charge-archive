@@ -92,6 +92,16 @@ M2 实现中，两个预览接口的请求体均为 `{ "input": "数字 ID 或�
 | POST /internal/ups/{uid}/ops-events | 提交每小时心跳、每轮错误或进程故障事件 |
 | POST /internal/ups/{uid}/worker-status | 更新进程心跳、扫描开始/成功/错误状态 |
 
+M4 实现的读取响应：`GET /internal/ups?enabled=true` 返回 `{"data":["550494308"]}`；
+`GET /internal/ups/{uid}/config` 返回 `data.uid`、`enabled`、
+`defaultAllConfigured`、`defaultUpConfigured`、`fixedRoutes`（每项含 `dynamicId`、
+`allConfigured`、`upConfigured`）和 `scans`。每个扫描状态含 `dynamicId`、
+`stateJson`（数据库 JSON 的字符串形式）、`lastCompleteScanAt`、
+`lastFullScanAt`、`fullScanRetryAt`、`baselineCompletedAt`。读取接口不返回 Webhook。
+Spring 的 `LocalDateTime` 响应没有时区后缀；Python 将其按 UTC 补全为带 `Z` 的时间后才回传批次接口。
+`POST /internal/ups/{uid}/worker-status` 接收 `{"kind":"STARTED|SUCCEEDED|ERROR|HEARTBEAT","message":null}`；
+`ERROR` 的 `message` 限 500 字符，UP 已停用时返回 `409 UP_DISABLED`。
+
 M3 批次请求的实际结构如下；所有评论合计不得超过 100 条，超过时返回 `422 INVALID_BATCH`：
 
 ~~~json

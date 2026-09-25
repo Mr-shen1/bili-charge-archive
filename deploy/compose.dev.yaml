@@ -53,5 +53,18 @@ services:
       timeout: 5s
       retries: 15
 
+  monitor:
+    profiles: ["monitor"]
+    build:
+      context: ../monitor
+    depends_on:
+      spring-app:
+        condition: service_healthy
+    environment:
+      MONITOR_INTERNAL_URL: http://spring-app:8080
+      MONITOR_API_TOKEN: ${MONITOR_API_TOKEN:-}
+      BILI_COOKIE: ${BILI_COOKIE:-}
+    restart: unless-stopped
+
 volumes:
   mysql_data:
