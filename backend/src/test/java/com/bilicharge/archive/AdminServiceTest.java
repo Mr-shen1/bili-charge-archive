@@ -25,6 +25,26 @@ class AdminServiceTest extends MySqlTestBase {
     private static final String WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/test-only-123";
 
     @Test
+    void oneGroupCanBeReusedByDifferentUps() {
+        String otherUid = "550494309";
+        long shared = group("shared");
+        long firstOps = group("first-ops");
+        long secondOps = group("second-ops");
+        when(bili.previewUser(UID)).thenReturn(new BiliPreviewClient.User(UID, "测试 UP 甲", ""));
+        when(bili.previewUser(otherUid)).thenReturn(new BiliPreviewClient.User(otherUid, "测试 UP 乙", ""));
+
+        service.createUp(UID, firstOps, shared, null);
+        service.createUp(otherUid, secondOps, shared, null);
+
+        assertThat(service.ups()).extracting(AdminService.UpView::defaultAllGroupId)
+                .contains(shared, shared);
+        assertThat(service.groups().stream().filter(group -> group.id().equals(shared))
+                .findFirst().orElseThrow().references())
+                .anyMatch(ref -> ref.contains("UP " + UID))
+                .anyMatch(ref -> ref.contains("UP " + otherUid));
+    }
+
+    @Test
     void groupsAreEncryptedReusableAndProtectedByAllReferences() throws Exception {
         long ops = group("ops");
         long all = group("all");
