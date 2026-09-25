@@ -2,11 +2,11 @@
 
 本项目计划将指定 UP 的充电专属文字、图片动态及评论持久化，提供手机优先的只读查询页面，并继续向飞书群发送文字与图片通知。
 
-> 当前状态：项目尚未实现网站或数据库。根目录的原始需求文档、参考图片和 Python 监控脚本是现有资料；docs/ 中的文件是后续开发的需求与设计依据，不代表功能已上线。
+> 当前状态：M0 工程骨架与 M1 数据库、安全基础已实现；页面仍是占位页，采集、业务查询、管理和通知功能尚未实现。根目录的原始需求文档、参考图片和 Python 监控脚本是现有资料；docs/ 中的后续功能描述不代表功能已上线。
 
 ## M0 本地工程骨架
 
-已建立 `backend/`、`frontend/`、`monitor/` 与 `deploy/` 的最小骨架。当前后端只有健康检查，前端是开发占位页，监控程序尚未采集；数据库表、登录、业务页面和通知在后续里程碑实现。实施进度及本机验证结果见[实施状态](docs/IMPLEMENTATION_STATUS.md)。
+已建立 `backend/`、`frontend/`、`monitor/` 与 `deploy/` 的工程骨架。M1 新增了数据库迁移与后端登录保护；前端仍是开发占位页，监控程序尚未采集。实施进度及本机验证结果见[实施状态](docs/IMPLEMENTATION_STATUS.md)。
 
 本地工具基线：JDK 21、Node 24.16.0、Python 3.12.10。Windows PowerShell 中分别运行：
 
@@ -21,6 +21,8 @@ py -3.12 -m unittest discover -s tests -v
 Set-Location ..
 ~~~
 
+M1 启动前，在被 Git 忽略的 `deploy/.env` 中设置 `ADMIN_USERNAME`、`ADMIN_PASSWORD_BCRYPT`（所选密码的 BCrypt 哈希）和长度至少 32 字符的随机 `MONITOR_API_TOKEN`。MySQL 开发库仍可使用 Compose 中的本地默认值；如果已有数据卷，更改 MySQL 凭据不会自动修改库内用户。切勿把实际密钥写入 `.env.example`。
+
 有 Docker Engine 与 Compose 时，在项目根目录检查并启动仅绑定到本机回环地址的开发服务：
 
 ~~~powershell
@@ -29,8 +31,19 @@ docker compose -f deploy/compose.dev.yaml up --build -d
 docker compose -f deploy/compose.dev.yaml ps
 Invoke-RestMethod http://127.0.0.1:18080/actuator/health
 Invoke-WebRequest http://127.0.0.1:18081/
+curl.exe -i http://127.0.0.1:18081/api/dynamics
 docker compose -f deploy/compose.dev.yaml down
 ~~~
+
+网页目前只显示“工程骨架已就绪”。健康接口返回 `UP`；未登录访问 `/api/dynamics` 返回带 `requestId` 的 401 JSON。M1 登录接口可用，但前端登录页将在 M5 实现。M1 的 JUnit 测试连接隔离的真实 MySQL 测试库 `bili_charge_archive_m1_test`，没有使用 H2。使用 Compose 默认开发用户时，可在容器启动后从项目根目录创建测试库并授权：
+
+~~~powershell
+docker compose -f deploy/compose.dev.yaml exec -T mysql8 sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root -e "CREATE DATABASE IF NOT EXISTS bili_charge_archive_m1_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON bili_charge_archive_m1_test.* TO ''bili_dev''@''%'';"'
+Set-Location backend
+.\mvnw.cmd test package
+~~~
+
+自定义 MySQL 用户时相应调整授权语句，测试库地址和账号也可用 `TEST_DB_URL`、`TEST_DB_USERNAME`、`TEST_DB_PASSWORD` 覆盖。
 
 MySQL 使用本地开发专用默认值；正式部署不得沿用。`.env.example` 只有占位值，不要把实际 Cookie、Webhook 或密钥写入仓库。M0 的 Compose 配置不代表生产配置。
 

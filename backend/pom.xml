@@ -20,7 +20,7 @@
         <mybatis-spring-boot.version>3.0.5</mybatis-spring-boot.version>
     </properties>
 
-    <!-- MyBatis is pinned here; Spring Boot's BOM pins Flyway for M1. M0 has no database connection. -->
+    <!-- MyBatis is pinned here; Spring Boot's BOM pins Flyway. -->
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -39,6 +39,27 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.mybatis.spring.boot</groupId>
+            <artifactId>mybatis-spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

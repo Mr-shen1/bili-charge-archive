@@ -1,15 +1,15 @@
 # 实施状态
 
-- 更新日期：2026-09-25
-- 当前目标：[开发实施计划](IMPLEMENTATION_PLAN.md) M0；**已完成**，退出条件均有实际验证证据
-- 原始需求、参考图片和旧脚本未改动；项目根目录的 `AGENTS.md` 在 M0 开始时已经存在，本阶段没有创建或修改它
+- 更新日期：2026-09-26
+- 当前目标：[开发实施计划](IMPLEMENTATION_PLAN.md) M1；**已完成本地开发与验收**，后续 M2 尚未开始
+- 原始需求、参考图片、旧脚本及项目根目录的 `AGENTS.md` 均未改动
 
 ## 里程碑状态
 
 | 里程碑 | 状态 | 验证证据 / 阻塞 |
 | --- | --- | --- |
 | M0 工程准备 | 已完成 | 后端、前端、Python 构建通过；Compose 镜像构建、三服务健康检查、MySQL 查询及 HTTP 验证通过 |
-| M1 数据库与安全基础 | 未开始 | 不在 M0 范围内 |
+| M1 数据库与安全基础 | 已完成 | MySQL 8.4.11 空库迁移及重复启动、5 项真实 MySQL/HTTP 测试与 2 项内网鉴权单元测试、开发容器和接口冒烟检查通过；Flyway 兼容性提示见下文 |
 | M2 管理配置 | 未开始 | 不在 M0 范围内 |
 | M3 批次入库 | 未开始 | 不在 M0 范围内 |
 | M4 Python 扫描器 | 未开始 | 不在 M0 范围内 |
@@ -66,3 +66,14 @@
 B 站接口字段、鉴权、充电类型与评论 oid/type 尚未做真实联调，这是 M2/M4 的风险；M0 不需要实际 Cookie，也没有读取或复制旧脚本的凭据。
 
 M0 完成后按用户要求初始化本地 Git 仓库。旧脚本目录、环境变量实值和构建产物继续由 `.gitignore` 排除；本次 Git 初始化不属于 M1。
+
+## M1 实现与验证
+
+- `backend/src/main/resources/db/migration/V1__baseline.sql` 使用 Flyway 管理 10 张业务表，表结构与 `DATABASE.md` 的 DDL 相同。迁移省略 `CREATE DATABASE` 和 `USE`，因为部署先建库，Flyway 在配置的数据源内执行；这个差异已记入数据库文档。
+- Spring Boot 接入 MySQL、Flyway、原生 MyBatis Mapper；数据库连接按 UTC 会话配置，B 站 ID 的列保持 `VARCHAR(32)`。`PageEnvelope` 提供固定 20 条的列表响应基础，具体键集 cursor 查询由 M5 实现。
+- `/api/auth/login` 用环境变量管理员名与 BCrypt 哈希登录，建立服务器会话并轮换 session ID；Cookie 为 `Secure`、`HttpOnly`、`SameSite=Strict`。除登录外的 `/api` 和图片路径均需要会话，写操作需要 `X-CSRF-Token`。错误响应统一为 `code/message/requestId`，响应头带 `X-Request-Id`。
+- `/internal` 要求私有网络来源及 `X-Monitor-Token`，Nginx 对该路径直接返回 404。内部业务处理器属于 M3/M4/M7，M1 只交付保护层。缺少管理员哈希或长度不足 32 字符的内部令牌时后端拒绝启动。
+- 自动化测试连接隔离的 `bili_charge_archive_m1_test` MySQL 8.4.11 库，没有使用 H2。`backend/mvnw.cmd -q test package` 退出码 0；`AuthHttpTest` 2 项、`HealthSmokeTest` 1 项、`MySqlConstraintsTest` 2 项、`InternalAccessTest` 2 项，合计 7 项通过。检查了首次空库迁移、再次执行迁移 0 项、10 张表、MyBatis 查询、空默认路由、双群相同、无效外键、被引用群删除、匿名接口、正确/错误登录、CSRF 拒绝，以及公网来源或无令牌访问内部接口被拒绝。
+- 本机 Compose 的 `mysql8`、`spring-app`、`nginx` 均为 `healthy`；开发库有 10 张业务表和 1 条成功迁移记录。通过 Nginx 请求：首页 200、后端健康 `UP`、匿名动态与图片接口 401、`/internal/ups` 404、登录 200、会话查询 200、缺 CSRF 的写请求 403。测试登录使用被 Git 忽略的 `deploy/.env` 中的本地专用凭据，没有写入仓库。
+
+**已知限制与后续项**：Spring Boot 3.5.16 管理的 Flyway 11.7.2 在 MySQL 8.4.11 上提示“已测试支持至 8.1”；本次迁移和约束实测通过，但目标环境升级前仍需复核兼容性。当前没有前端登录、动态/评论查询或管理业务接口，分别属于 M5、M2；没有真实 B 站、OSS、飞书联调。M1 无阻塞项。

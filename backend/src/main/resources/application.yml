@@ -1,6 +1,12 @@
 spring:
   application:
     name: bili-charge-archive
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  flyway:
+    enabled: true
 
 management:
   endpoints:
@@ -10,3 +16,15 @@ management:
 
 server:
   port: 8080
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: strict
+
+app:
+  admin:
+    username: ${ADMIN_USERNAME}
+    password-bcrypt: ${ADMIN_PASSWORD_BCRYPT}
+  monitor-token: ${MONITOR_API_TOKEN}

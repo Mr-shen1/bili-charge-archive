@@ -1,6 +1,6 @@
 # 接口契约
 
-- 状态：目标接口，尚未实现
+- 状态：M1 已实现登录、会话、CSRF、统一错误与请求 ID；其余业务接口仍为目标契约
 - 需求依据：[PRD](PRD.md)；事务与数据关系见[架构](ARCHITECTURE.md)、[数据库](DATABASE.md)
 - Base path：公开 /api；仅 Docker 内网 /internal
 - 所有 B 站 ID 为 JSON 字符串；时间为 UTC ISO 8601（例如 2026-09-25T08:00:00Z）；请求与响应为 UTF-8 JSON
