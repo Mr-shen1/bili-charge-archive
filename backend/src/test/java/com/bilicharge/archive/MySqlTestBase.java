@@ -24,5 +24,6 @@ abstract class MySqlTestBase {
         registry.add("app.feishu.webhook-key", () -> Base64.getEncoder().encodeToString(
                 "m2-test-only-key-32-bytes-long!!".getBytes(StandardCharsets.UTF_8)));
         registry.add("app.bili.cookie", () -> "");
+        registry.add("app.media.worker-enabled", () -> "false");
     }
 }

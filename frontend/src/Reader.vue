@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import MediaImages from "./MediaImages.vue";
 
 type Page = { pageSize: number; nextCursor: string | null; prevCursor: string | null; hasNext: boolean; hasPrev: boolean };
@@ -13,7 +13,7 @@ type Comment = { dynamicId: string; rpid: string; rootRpid: string | null; paren
   authorMid: string; authorName: string; authorAvatarUrl: string | null; authorLevel: number;
   text: string; publishedAt: string; likeCount: number; replyCount: number;
   storedReplyCount: number; isUp: boolean; sourceUnavailable: boolean; images: Image[] };
-type Thread = { open: boolean; data: PageResult<Comment> | null; loading: boolean; error: string };
+type Thread = { open: boolean; data: PageResult<Comment> | null; loading: boolean; error: string; cursor: string | null };
 
 const props = defineProps<{ route: string }>();
 const ups = ref<Up[]>([]);
@@ -114,13 +114,14 @@ async function toggleReplies(root: Comment) {
   const current = threads.value[root.rpid];
   if (current?.open) { current.open = false; return; }
   if (current?.data) { current.open = true; return; }
-  threads.value[root.rpid] = { open: true, data: null, loading: true, error: "" };
+  threads.value[root.rpid] = { open: true, data: null, loading: true, error: "", cursor: null };
   await changeReplies(root.rpid, null);
 }
 async function changeReplies(rpid: string, cursor: string | null) {
   const thread = threads.value[rpid];
   thread.loading = true;
   thread.error = "";
+  thread.cursor = cursor;
   try {
     thread.data = await request<PageResult<Comment>>(pagePath(
       `/api/dynamics/${detailId.value}/comments/${rpid}/replies`, cursor));
@@ -138,6 +139,42 @@ onMounted(async () => {
   await routeChanged();
 });
 watch(() => props.route, routeChanged);
+let imageRefresh: ReturnType<typeof setInterval> | undefined;
+let refreshing = false;
+function pending(images: Image[]) { return images.some(image => image.status === "PENDING" || image.status === "RETRY"); }
+async function refreshImages() {
+  if (refreshing || loading.value) return;
+  const detailRoute = props.route.match(/^\/dynamics\/([1-9][0-9]*)$/);
+  const hasPending = detailRoute
+    ? !!detail.value && (pending(detail.value.images) || (roots.value?.data.some(row => pending(row.images)) ?? false)
+      || Object.values(threads.value).some(thread => thread.open && thread.data?.data.some(row => pending(row.images))))
+    : (list.value?.data.some(row => pending(row.images)) ?? false);
+  if (!hasPending) return;
+  refreshing = true;
+  try {
+    if (detailRoute) {
+      const id = detailRoute[1];
+      const currentDetail = await request<{ data: Dynamic }>(`/api/dynamics/${id}`);
+      const currentRoots = await request<PageResult<Comment>>(pagePath(`/api/dynamics/${id}/comments`, rootCursor.value));
+      if (props.route !== `/dynamics/${id}`) return;
+      detail.value = currentDetail.data;
+      roots.value = currentRoots;
+      for (const [rpid, thread] of Object.entries(threads.value)) {
+        if (thread.open && thread.data) {
+          const updated = await request<PageResult<Comment>>(pagePath(`/api/dynamics/${id}/comments/${rpid}/replies`, thread.cursor));
+          if (props.route === `/dynamics/${id}` && threads.value[rpid] === thread) thread.data = updated;
+        }
+      }
+    } else {
+      const route = window.location.pathname + window.location.search;
+      const updated = await request<PageResult<Dynamic>>(`/api${route}`);
+      if (window.location.pathname + window.location.search === route) list.value = updated;
+    }
+  } catch { /* The saved text stays visible while a later refresh retries. */ }
+  finally { refreshing = false; }
+}
+imageRefresh = setInterval(refreshImages, 20000);
+onUnmounted(() => { if (imageRefresh) clearInterval(imageRefresh); });
 </script>
 
 <template>

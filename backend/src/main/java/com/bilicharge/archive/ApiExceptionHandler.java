@@ -2,6 +2,7 @@ package com.bilicharge.archive;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -15,7 +16,9 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 final class ApiExceptionHandler {
     @ExceptionHandler(AdminException.class)
     ResponseEntity<ApiError> admin(AdminException error, HttpServletRequest request) {
-        return ResponseEntity.status(error.status()).body(
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(error.status());
+        if (request.getRequestURI().startsWith("/api/media/")) response.cacheControl(CacheControl.noStore());
+        return response.body(
                 new ApiError(error.code(), error.getMessage(), requestId(request)));
     }
 

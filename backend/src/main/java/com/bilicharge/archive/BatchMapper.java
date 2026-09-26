@@ -64,7 +64,7 @@ interface BatchMapper {
 
     @Update("""
             UPDATE dynamic_image SET source_url=#{sourceUrl},oss_key=NULL,upload_status='PENDING',
-                retry_at=NULL,last_error=NULL WHERE dynamic_id=#{dynamicId} AND position=#{position}
+                retry_at=NULL,last_error=NULL,attempts=0 WHERE dynamic_id=#{dynamicId} AND position=#{position}
             """)
     int resetDynamicImage(@Param("dynamicId") String dynamicId, @Param("position") int position,
                           @Param("sourceUrl") String sourceUrl);
@@ -88,7 +88,7 @@ interface BatchMapper {
 
     @Update("""
             UPDATE comment_image SET source_url=#{sourceUrl},oss_key=NULL,upload_status='PENDING',
-                retry_at=NULL,last_error=NULL
+                retry_at=NULL,last_error=NULL,attempts=0
             WHERE dynamic_id=#{dynamicId} AND rpid=#{rpid} AND position=#{position}
             """)
     int resetCommentImage(@Param("dynamicId") String dynamicId, @Param("rpid") String rpid,

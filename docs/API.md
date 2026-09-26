@@ -34,7 +34,7 @@
 | GET /api/media/dynamics/{dynamicId}/{position} | 0 起始图片顺序 | 登录后对 READY 图片 302 到 10 分钟 OSS 签名 GET URL |
 | GET /api/media/comments/{dynamicId}/{rpid}/{position} | 同上 | 同上 |
 
-内容 API 的图片元数据包含 position、status（PENDING/RETRY/READY/UNAVAILABLE）和本站媒体路径。READY 前前端显示占位提示；签名端点在未就绪时返回 409、确定不可用时返回 410。302 设置 Cache-Control: no-store；页面重新请求同一路径即可获取新签名。来源删除标记 sourceUnavailable 为真时仍返回已存内容。
+内容 API 的图片元数据包含 position、status（PENDING/RETRY/READY/UNAVAILABLE）和本站媒体路径。READY 前前端显示占位提示；签名端点在未就绪时返回 409、确定不可用时返回 410，图片不存在时返回 404，OSS 未配置或暂不可用时返回 503。302 设置 `Cache-Control: no-store` 与 `Referrer-Policy: no-referrer`；页面重新请求同一路径即可获取新签名。来源删除标记 sourceUnavailable 为真时仍返回已存内容和已就绪图片。签名链接有效期为 10 分钟，获得链接的持有者在有效期内可访问对象，前端不持有 AccessKey。
 
 动态列表响应示意：
 

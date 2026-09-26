@@ -2,11 +2,11 @@
 
 本项目计划将指定 UP 的充电专属文字、图片动态及评论持久化，提供手机优先的只读查询页面，并继续向飞书群发送文字与图片通知。
 
-> 当前状态：M0～M5 已实现并通过各自的本地阶段验证。可以登录手机阅读页查看已保存的动态与评论，在管理页配置飞书群、UP 与专属动态路由；Python 扫描器可按 UP 运行，并经内部批次接口保存内容、进度与待发事件。图片上传与 READY 图片访问属于 M6，飞书投递属于 M7。根目录的原始需求文档、参考图片和旧 Python 监控脚本是现有资料；docs/ 中的后续功能描述不代表功能已上线。
+> 当前状态：M0～M6 已实现并通过本地阶段验证。可以登录手机阅读页查看已保存的动态、评论及就绪图片，在管理页配置飞书群、UP 与专属动态路由；Python 扫描器可按 UP 运行，并经内部批次接口保存内容、进度与待发事件。图片异步上传到私有 OSS，登录后从本站媒体路径取得短效签名访问。飞书投递属于 M7，尚未实现。根目录的原始需求文档、参考图片和旧 Python 监控脚本是现有资料；docs/ 中的后续功能描述不代表功能已上线。
 
 ## M0 本地工程骨架
 
-已建立 `backend/`、`frontend/`、`monitor/` 与 `deploy/` 的工程骨架。M1 新增数据库迁移与后端登录保护；M2 增加手机管理页与配置接口；M3 增加带基线放行的内部批次事务接口；M4 实现扫描器、固定目标与每 UP 子进程管理；M5 增加内容查询与手机阅读页。实施进度及本机验证结果见[实施状态](docs/IMPLEMENTATION_STATUS.md)。
+已建立 `backend/`、`frontend/`、`monitor/` 与 `deploy/` 的工程骨架。M1 新增数据库迁移与后端登录保护；M2 增加手机管理页与配置接口；M3 增加带基线放行的内部批次事务接口；M4 实现扫描器、固定目标与每 UP 子进程管理；M5 增加内容查询与手机阅读页；M6 增加图片后台任务、私有 OSS 上传及签名访问。实施进度及本机验证结果见[实施状态](docs/IMPLEMENTATION_STATUS.md)和 [M6 验收记录](docs/ACCEPTANCE_REPORT_M6.md)。
 
 本地工具基线：JDK 21、Node 24.16.0、Python 3.12.10。Windows PowerShell 中分别运行：
 
@@ -21,7 +21,7 @@ py -3.12 -m unittest discover -s tests -v
 Set-Location ..
 ~~~
 
-启动前，在被 Git 忽略的 `deploy/.env` 中设置 `ADMIN_USERNAME`、`ADMIN_PASSWORD_BCRYPT`（所选密码的 BCrypt 哈希）、长度至少 32 字符的随机 `MONITOR_API_TOKEN`，以及 Base64 编码的随机 32 字节 `FEISHU_WEBHOOK_ENC_KEY`。真实动态预览还需要合法测试账号的 `BILI_COOKIE`；不要发在聊天或提交到 Git。MySQL 开发库仍可使用 Compose 中的本地默认值；如果已有数据卷，更改 MySQL 凭据不会自动修改库内用户。切勿把实际密钥写入 `.env.example`。
+启动前，在被 Git 忽略的 `deploy/.env` 中设置 `ADMIN_USERNAME`、`ADMIN_PASSWORD_BCRYPT`（所选密码的 BCrypt 哈希）、长度至少 32 字符的随机 `MONITOR_API_TOKEN`，以及 Base64 编码的随机 32 字节 `FEISHU_WEBHOOK_ENC_KEY`。真实动态预览与图片下载还需要合法测试账号的 `BILI_COOKIE`；图片上传还需同时配置 `OSS_REGION`、`OSS_BUCKET`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`，其中地域填写 `cn-shenzhen` 一类 ID，Bucket 必须为 Private。不要把凭据发在聊天或提交到 Git。MySQL 开发库仍可使用 Compose 中的本地默认值；如果已有数据卷，更改 MySQL 凭据不会自动修改库内用户。切勿把实际密钥写入 `.env.example`。
 
 有 Docker Engine 与 Compose 时，在项目根目录检查并启动仅绑定到本机回环地址的开发服务：
 
@@ -35,7 +35,7 @@ curl.exe -i http://127.0.0.1:18081/api/dynamics
 docker compose -f deploy/compose.dev.yaml down
 ~~~
 
-网页 `http://127.0.0.1:18081/` 提供登录，登录后进入 `/dynamics` 阅读已存动态及评论，支持 UP 筛选和详情；`/admin` 提供飞书群、UP 与专属路由管理。当前图片显示状态或占位，实际图片访问在 M6 接入。健康接口返回 `UP`；未登录访问业务 API 返回带 `requestId` 的 401 JSON。JUnit 测试连接隔离的真实 MySQL 测试库 `bili_charge_archive_m1_test`，没有使用 H2。使用 Compose 默认开发用户时，可在容器启动后从项目根目录创建测试库并授权：
+网页 `http://127.0.0.1:18081/` 提供登录，登录后进入 `/dynamics` 阅读已存动态及评论，支持 UP 筛选和详情；`/admin` 提供飞书群、UP 与专属路由管理。图片任务需要 OSS 配置；就绪图片通过本站鉴权媒体路径访问，未就绪时显示占位。健康接口返回 `UP`；未登录访问业务 API 返回带 `requestId` 的 401 JSON。JUnit 测试连接隔离的真实 MySQL 测试库 `bili_charge_archive_m1_test`，没有使用 H2。使用 Compose 默认开发用户时，可在容器启动后从项目根目录创建测试库并授权：
 
 ~~~powershell
 docker compose -f deploy/compose.dev.yaml exec -T mysql8 sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -u root -e "CREATE DATABASE IF NOT EXISTS bili_charge_archive_m1_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON bili_charge_archive_m1_test.* TO ''bili_dev''@''%'';"'

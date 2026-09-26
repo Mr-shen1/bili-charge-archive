@@ -1,6 +1,6 @@
 # 部署与运维设计
 
-- 状态：目标运行手册，**目前尚无可部署的网站代码或 Compose 文件**
+- 状态：目标生产运行手册；本地开发 Compose 已实现，生产部署包、IP HTTPS 与 2 GB 主机验收仍属于 M8～M9
 - 环境：用户现有阿里云 Linux 主机、2 GB RAM、Docker、固定公网 IP、无域名，初始 1～2 个 UP
 - 需求与架构：[PRD](PRD.md) · [ARCHITECTURE](ARCHITECTURE.md)
 - 后端运行基线：Spring Boot 3.5.x、JDK 21、原生 MyBatis；具体补丁版本在创建工程时固定
@@ -29,6 +29,8 @@ Python 容器内的管理进程按启用 UP 启停子进程，不为每个 UP �
 在服务器使用仅管理员可读的环境配置文件或容器密钥机制，备份中保护数据库密文与加密密钥。`FEISHU_WEBHOOK_ENC_KEY` 是 Base64 编码的随机 32 字节密钥；已有群配置后必须持续使用同一密钥，丢失密钥将无法解密已保存的 Webhook，轮换时需先制定重新加密方案。飞书图片上传需先验证应用授权与上传接口可用，失败时按通知队列重试。群 Webhook 可由管理员页面输入、在数据库加密，公开 API 仅回显是否已配置。现有脚本中存在硬编码 B 站 Cookie，路由文件中含 Webhook；迁移时不要将原值复制到新文档或仓库，正式上线前移除代码内凭据并更换已暴露的凭据。
 
 OSS Bucket 设置为 Private，使用限于目标目录的 RAM 权限；Spring 执行上传与生成短效 GET 签名 URL，前端不持有 OSS AccessKey。匿名直接访问 Bucket 对象应被拒绝。阿里云官方说明私有对象通过限时签名链接访问，签名链接在有效期内持有者可使用：[私有资源访问](https://www.alibabacloud.com/help/en/oss/how-to-apply-the-private-permission-to-the-actual-business)、[签名下载](https://www.alibabacloud.com/help/en/oss/developer-reference/python-download-using-a-presigned-url)。
+
+M6 实现采用 OSS Java SDK 3.18.4、V4 签名。RAM 身份需允许测试 Bucket 的 `oss:GetBucketAcl`，以及 `bili-charge/` 前缀的 `oss:PutObject`、`oss:PutObjectAcl`、`oss:GetObject`；服务在上传或签名前检查 Bucket ACL 为 Private，上传后将对象 ACL 设为 Private。四项 `OSS_*` 参数须全部配置在不入库的 `deploy/.env`，`OSS_REGION` 填地域 ID（如深圳为 `cn-shenzhen`），不能填控制台展示的中文地域名；未配置时图片任务不运行，已存文字照常可查。真实联调还需以匿名原始对象 URL 请求确认拒绝，再以登录后的本站媒体路径确认十分钟签名链接可用；签名 URL 不写日志。权限与地域依据：[Bucket ACL](https://help.aliyun.com/en/oss/developer-reference/manage-the-acl-of-a-bucket)、[Java SDK 签名下载](https://help.aliyun.com/en/oss/developer-reference/download-using-a-presigned-url)、[地域与 Endpoint](https://help.aliyun.com/zh/oss/user-guide/regions-and-endpoints)。
 
 ## 3. 公网 IP 的 HTTPS
 

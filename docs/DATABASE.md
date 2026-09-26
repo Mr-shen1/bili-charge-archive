@@ -119,6 +119,7 @@ CREATE TABLE dynamic_image (
   source_url VARCHAR(2048) NOT NULL,
   oss_key VARCHAR(512) NULL,
   upload_status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
   retry_at DATETIME(3) NULL,
   last_error VARCHAR(1000) NULL,
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
@@ -167,6 +168,7 @@ CREATE TABLE comment_image (
   source_url VARCHAR(2048) NOT NULL,
   oss_key VARCHAR(512) NULL,
   upload_status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
   retry_at DATETIME(3) NULL,
   last_error VARCHAR(1000) NULL,
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
@@ -257,7 +259,7 @@ CREATE TABLE notification_delivery (
 
 ## 4. 待实施时验证的工程点
 
-M1 的 [`V1__baseline.sql`](../backend/src/main/resources/db/migration/V1__baseline.sql) 建立 10 张业务表；M3 的 [`V2__baseline_completion.sql`](../backend/src/main/resources/db/migration/V2__baseline_completion.sql) 增加 `baseline_completed_at`，本页 DDL 展示迁移后的目标结构。迁移省略 `CREATE DATABASE` 和 `USE`：数据库由部署流程先创建，Flyway 在已配置的数据源库内执行。M3 在全新 MySQL 8.4.11 测试库中依次执行 V1、V2，重复启动不重建表；CHECK、外键和引用限制由集成测试验证。Spring Boot BOM 管理的 Flyway 11.7.2 对 MySQL 8.4 发出“最新版已测试至 8.1”的提示，当前实测迁移成功；部署前需继续关注兼容性。
+M1 的 [`V1__baseline.sql`](../backend/src/main/resources/db/migration/V1__baseline.sql) 建立 10 张业务表；M3 的 [`V2__baseline_completion.sql`](../backend/src/main/resources/db/migration/V2__baseline_completion.sql) 增加 `baseline_completed_at`；M6 的 [`V3__image_attempts.sql`](../backend/src/main/resources/db/migration/V3__image_attempts.sql) 为两张图片表增加尝试次数。本页 DDL 展示迁移后的目标结构。迁移省略 `CREATE DATABASE` 和 `USE`：数据库由部署流程先创建，Flyway 在已配置的数据源库内执行。M3 在全新 MySQL 8.4.11 测试库中依次执行 V1、V2，重复启动不重建表；M6 在开发库和测试库应用 V3，CHECK、外键和引用限制由集成测试验证。Spring Boot BOM 管理的 Flyway 11.7.2 对 MySQL 8.4 发出“最新版已测试至 8.1”的提示，当前实测迁移成功；部署前需继续关注兼容性。
 
 SQL 是完整的新库设计，不表示现有数据库已建立。本文 DDL 已在隔离的 MySQL 8.0.26 临时实例中执行，并验证 10 张表、空路由/重复群约束、被引用群删除限制及历史群名快照；实施时仍须在目标 MySQL 8 版本复验 90 天清理，并对真实评论规模测量索引查询耗时。若部署版本低于 8.0.16，不能把 CHECK 当成已生效的保护；应升级或改用其他约束方案。
 

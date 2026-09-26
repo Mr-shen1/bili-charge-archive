@@ -35,3 +35,9 @@ app:
     webhook-key: ${FEISHU_WEBHOOK_ENC_KEY:}
   bili:
     cookie: ${BILI_COOKIE:}
+  media:
+    region: ${OSS_REGION:}
+    bucket: ${OSS_BUCKET:}
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    poll-ms: 5000
