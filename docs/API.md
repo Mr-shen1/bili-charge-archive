@@ -88,7 +88,7 @@ M2 实现中，两个预览接口的请求体均为 `{ "input": "数字 ID 或�
 | GET /internal/ups?enabled=true | 管理进程获取启用 UID；只返回必要的启停信息 |
 | GET /internal/ups/{uid}/config | 子进程获取 UP 资料、最新默认路由、专属动态 ID 和扫描参数；不必返回 Webhook |
 | POST /internal/ups/{uid}/batches | 提交一批动态、评论、图片元数据、扫描状态和候选通知；整批在一个 MySQL 事务内完成 |
-| POST /internal/deliveries/claim | 按 upUid、workerId 认领一个可发送目标；服务端实时解析路由、设置租约，并返回仅供该子进程使用的 Webhook 与消息 |
+| POST /internal/deliveries/claim | 按可选 upUid、必填 workerId 认领一个可发送目标；服务端实时解析路由、设置租约，并返回仅供投递进程使用的 Webhook 与消息 |
 | POST /internal/deliveries/{eventId}/{role}/result | 按 workerId/租约确认成功或失败；失败计算下次重试时间 |
 | POST /internal/ups/{uid}/ops-events | 提交每小时心跳、每轮错误或进程故障事件 |
 | POST /internal/ups/{uid}/worker-status | 更新进程心跳、扫描开始/成功/错误状态 |
@@ -132,8 +132,10 @@ M3 批次请求的实际结构如下；所有评论合计不得超过 100 条，
 
 Spring 按主键幂等 upsert 内容，仅对首次发现的可投递动态/评论插入唯一事件键；内容、图片元数据、扫描状态、来源状态和入队在同一事务。首次基线分批时事件 `ready_at` 留空；最后一批把该动态 ID 放入 `baselineCompletedDynamicIds`，服务端持久记录完成时间并放行该动态所有未就绪事件。该列表可与 `items` 同批提交，也可单独提交，但目标动态及扫描状态必须已入库。此后新事件直接就绪；重复完成不会重新放行。请求失败可原样重试，不能先推进扫描状态。响应为 `{"data":{"newDynamics":1,"newComments":1,"newEvents":2,"releasedEvents":2}}`，重复提交的新增计数为 0。未发目标在 M7 认领时按**当前**路由选群。
 
-认领只在短数据库事务内完成；飞书 HTTP 调用不在事务中。认领结果包含 leaseUntil；结果接口只接受当前租约持有者，过期或重复确认返回 409。发送成功但确认前崩溃仍可能重复，符合 PRD 的优先不漏发规则。
+M7 投递请求：`POST /internal/deliveries/claim` 的请求体为 `{"workerId":"sender-1","upUid":null}`；无到期目标时返回 `{"data":null}`。有目标时 `data` 含 `eventId`、`role`（ALL/UP/OPS）、`leaseToken`、`leaseUntil`、`upUid`、`dynamicId`、`commentRpid`、`eventType`、`messageText`、`imageSourceUrls`、`webhook`。Webhook 只通过受内网来源和 `X-Monitor-Token` 双重限制的内部接口返回，公开管理接口和日志不回显。`POST /internal/deliveries/{eventId}/{role}/result` 的请求体为 `{"workerId":"sender-1","leaseToken":"认领返回值","success":true,"error":null}`；失败时 `success` 为 false，`error` 只填不含凭据的简短错误码。认领与结果确认分别在短数据库事务中完成；飞书 HTTP 调用在事务外。租约为 10 分钟，失败重试间隔依次为 5/10/15/30/60 秒，之后封顶 60 秒；过期或重复确认返回 409。发送成功但确认前崩溃仍可能重复，符合 PRD 的优先不漏发规则。
+
+运维事件请求体为 `{"kind":"ERROR","message":"简短错误"}` 或 `{"kind":"HEARTBEAT","message":null}`。`worker-status` 的 STARTED/HEARTBEAT 会按 UTC 小时去重入队心跳，ERROR 每轮单独入队；管理进程可调用 `ops-events` 报告某 UP 子进程异常。`GET /api/admin/deliveries` 复用管理员会话鉴权，返回固定 20 条及 `page.nextCursor`、`prevCursor`、`hasNext`、`hasPrev`；`upUid` 和 `status` 属于 cursor 作用域，交叉复用返回 422。单条含事件、角色、实际群名快照、状态、尝试次数、下次重试时间和错误码，不含 Webhook。该接口只列出至少被认领过一次的目标；尚未认领的事件计入 UP 状态的 `pendingCount`，不在此列表。
 
 ## 5. 来源与文档边界
 
-B 站动态及评论接口见原始需求文档中的社区接口参考；正式扫描时需用实际账号验证字段和鉴权。固定动态必须核实详情返回 ID、作者 UID 及评论 oid/type，不允许仅凭链接字符串入库。M3 批次只接收已核对的来源快照；M5 已提供内容查询，媒体和通知投递接口仍待后续里程碑实现。
+B 站动态及评论接口见原始需求文档中的社区接口参考；正式扫描时需用实际账号验证字段和鉴权。固定动态必须核实详情返回 ID、作者 UID 及评论 oid/type，不允许仅凭链接字符串入库。M3 批次只接收已核对的来源快照；M5 内容查询、M6 媒体访问及 M7 通知投递接口已在本地实现，生产部署仍待 M8～M9。

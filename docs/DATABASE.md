@@ -1,8 +1,8 @@
 # 数据库设计与建表 SQL
 
-- 状态：**M1 已实现版本化迁移，尚未生产部署**；需求约束见 [PRD](PRD.md)
+- 状态：**M1～M7 已实现版本化迁移，尚未生产部署**；需求约束见 [PRD](PRD.md)
 - 目标：MySQL 8.0.16+ / InnoDB / utf8mb4
-- 表数：10；旧 JSON 状态及队列不导入
+- 表数：10 张业务表加 1 张 M7 内部认领锁表；旧 JSON 状态及队列不导入
 - 数据访问：已确认使用原生 MyBatis；DDL 与索引独立于 Java 映射实现
 
 ## 1. 约定与关系
@@ -248,20 +248,27 @@ CREATE TABLE notification_delivery (
   CONSTRAINT fk_delivery_group
     FOREIGN KEY (group_id) REFERENCES feishu_group (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- M7 内部互斥行；不属于业务实体表。
+CREATE TABLE delivery_claim_lock (
+  id TINYINT NOT NULL PRIMARY KEY
+) ENGINE=InnoDB;
+
+INSERT INTO delivery_claim_lock(id) VALUES (1);
 ~~~
 
 ## 3. 关键读写规则
 
 - 动态列表使用 idx_dynamic_latest 或 idx_dynamic_up_latest 做发布时间、ID 的稳定倒序分页。根评论筛选 root_rpid IS NULL 后倒序；楼中楼按同一索引正序。每张卡片的已存评论数对 comment.dynamic_id 做 COUNT，不信任来源展示的评论总数。
 - 批次接口由 Spring 服务层开启事务，并通过同一数据源的 MyBatis Mapper 按主键 upsert dynamic/comment/image，更新 dynamic_scan_state，按 dedupe_key 插入 notification_event。首次基线结束前事件 ready_at 为 NULL；完成时设置 baseline_completed_at 并放行，此后新事件直接就绪。内容编辑只更新内容行，不插入新事件。切换到专属模式时，非专属动态的未完成事件设置 canceled_at；M7 的队列查询必须排除 canceled_at 非空的事件，删除路由也不清除此字段。
-- 出站认领在短事务内重算未完成目标、设置 notification_delivery 租约；HTTP 发送在事务外；确认结果再用短事务写状态。路由变更可改尚未成功的 group_id，已 SENT 的 group_name_snapshot 与 sent_at 不变。同一群的队头未完成时后续事件不越过。
+- 出站认领先锁定 `delivery_claim_lock` 唯一行，再在短事务内重算未完成目标、设置 notification_delivery 的 10 分钟租约；结果确认使用同一锁行和单独短事务，HTTP 发送在事务外。路由变更可改尚未成功的 group_id，已 SENT 的 group_name_snapshot 与 sent_at 不变。同一群的队头未完成时后续事件不越过；失败后的退避为 5/10/15/30/60 秒，之后封顶 60 秒。
 - 群删除前检查 up_account 与 dynamic_route 的引用；历史 notification_delivery.group_id 可在删除后置 NULL，group_name_snapshot 保留。清理 completed_at 早于 90 天的完成事件时由外键级联清理投递行；未完成事件不清理。
 - 来源不可用标记只在明确证据后设置；不因跌出最新 50 条设置。没有用户主动删除内容或 UP 的接口。
 
 ## 4. 待实施时验证的工程点
 
-M1 的 [`V1__baseline.sql`](../backend/src/main/resources/db/migration/V1__baseline.sql) 建立 10 张业务表；M3 的 [`V2__baseline_completion.sql`](../backend/src/main/resources/db/migration/V2__baseline_completion.sql) 增加 `baseline_completed_at`；M6 的 [`V3__image_attempts.sql`](../backend/src/main/resources/db/migration/V3__image_attempts.sql) 为两张图片表增加尝试次数；[`V4__cancel_out_of_scope_events.sql`](../backend/src/main/resources/db/migration/V4__cancel_out_of_scope_events.sql) 增加事件作废时间并将已有专属路由 UP 的非专属未发事件作废。本页 DDL 展示迁移后的目标结构。迁移省略 `CREATE DATABASE` 和 `USE`：数据库由部署流程先创建，Flyway 在已配置的数据源库内执行。M3 在全新 MySQL 8.4.11 测试库中依次执行 V1、V2，重复启动不重建表；M6 在开发库和测试库应用 V3，CHECK、外键和引用限制由集成测试验证。Spring Boot BOM 管理的 Flyway 11.7.2 对 MySQL 8.4 发出“最新版已测试至 8.1”的提示，当前实测迁移成功；部署前需继续关注兼容性。
+M1 的 [`V1__baseline.sql`](../backend/src/main/resources/db/migration/V1__baseline.sql) 建立 10 张业务表；M3 的 [`V2__baseline_completion.sql`](../backend/src/main/resources/db/migration/V2__baseline_completion.sql) 增加 `baseline_completed_at`；M6 的 [`V3__image_attempts.sql`](../backend/src/main/resources/db/migration/V3__image_attempts.sql) 为两张图片表增加尝试次数；[`V4__cancel_out_of_scope_events.sql`](../backend/src/main/resources/db/migration/V4__cancel_out_of_scope_events.sql) 增加事件作废时间并将已有专属路由 UP 的非专属未发事件作废；M7 的 [`V5__delivery_claim_lock.sql`](../backend/src/main/resources/db/migration/V5__delivery_claim_lock.sql) 增加 1 张内部锁表。本页 DDL 展示迁移后的目标结构。迁移省略 `CREATE DATABASE` 和 `USE`：数据库由部署流程先创建，Flyway 在已配置的数据源库内执行。隔离 MySQL 8.4.11 测试库已应用 V1～V5；CHECK、外键、队列重试和清理由集成测试验证。Spring Boot BOM 管理的 Flyway 11.7.2 对 MySQL 8.4 发出“最新版已测试至 8.1”的提示，当前实测迁移成功；部署前需继续关注兼容性。
 
-SQL 是完整的新库设计，不表示现有数据库已建立。本文 DDL 已在隔离的 MySQL 8.0.26 临时实例中执行，并验证 10 张表、空路由/重复群约束、被引用群删除限制及历史群名快照；实施时仍须在目标 MySQL 8 版本复验 90 天清理，并对真实评论规模测量索引查询耗时。若部署版本低于 8.0.16，不能把 CHECK 当成已生效的保护；应升级或改用其他约束方案。
+本文的 10 张业务表 DDL 已在隔离的 MySQL 8.0.26 临时实例中执行，并验证空路由/重复群约束、被引用群删除限制及历史群名快照；M7 内部锁表已在 MySQL 8.4.11 隔离库通过 V5 迁移验证。生产版本仍须复验 90 天清理，并对真实评论规模测量索引查询耗时。若部署版本低于 8.0.16，不能把 CHECK 当成已生效的保护；应升级或改用其他约束方案。
 
 MySQL CHECK、外键与 JSON 语法依据：[MySQL CHECK](https://dev.mysql.com/doc/refman/8.0/en/create-table-check-constraints.html)、[MySQL 外键](https://dev.mysql.com/doc/refman/8.0/en/create-table-foreign-keys.html)、[MySQL JSON](https://dev.mysql.com/doc/refman/8.0/en/json.html)。
