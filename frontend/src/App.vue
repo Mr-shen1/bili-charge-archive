@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import Reader from "./Reader.vue";
 
 type Group = {
   id: number;
@@ -44,6 +45,19 @@ const loggedIn = ref(false),
   busy = ref(false),
   error = ref(""),
   notice = ref("");
+const route = ref(window.location.pathname + window.location.search);
+const reading = computed(() => route.value.startsWith("/dynamics"));
+function syncRoute() { route.value = window.location.pathname + window.location.search; }
+function navigate(path: string) {
+  window.history.pushState({}, "", path);
+  syncRoute();
+  window.scrollTo(0, 0);
+}
+function replaceRoute(path: string) {
+  window.history.replaceState({}, "", path);
+  syncRoute();
+  window.scrollTo(0, 0);
+}
 const username = ref(""),
   password = ref(""),
   csrf = ref("");
@@ -148,7 +162,7 @@ async function login() {
     csrf.value = me.csrfToken;
     password.value = "";
     loggedIn.value = true;
-    await refresh();
+    replaceRoute("/dynamics");
   });
 }
 async function logout() {
@@ -263,6 +277,8 @@ async function deleteRoute(route: Route) {
   });
 }
 onMounted(async () => {
+  window.addEventListener("popstate", syncRoute);
+  window.addEventListener("auth-expired", sessionExpired);
   try {
     const me = await api<{ username: string; csrfToken: string }>(
       "/api/auth/me",
@@ -270,10 +286,16 @@ onMounted(async () => {
     username.value = me.username;
     csrf.value = me.csrfToken;
     loggedIn.value = true;
-    await refresh();
+    if (route.value === "/") replaceRoute("/dynamics");
+    else if (!reading.value) await refresh();
   } catch {
     loggedIn.value = false;
   }
+});
+function sessionExpired() { loggedIn.value = false; csrf.value = ""; }
+onUnmounted(() => {
+  window.removeEventListener("popstate", syncRoute);
+  window.removeEventListener("auth-expired", sessionExpired);
 });
 </script>
 
@@ -282,7 +304,7 @@ onMounted(async () => {
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark">充</span>
-        <div><strong>充电动态</strong><small>管理台</small></div>
+        <div><strong>充电动态</strong><small>{{ reading ? "阅读" : "管理台" }}</small></div>
       </div>
       <button v-if="loggedIn" class="text-button" @click="logout">
         退出登录
@@ -291,7 +313,7 @@ onMounted(async () => {
     <main v-if="!loggedIn" class="card login-panel">
       <span class="eyebrow">管理员登录</span>
       <h1>欢迎回来</h1>
-      <p class="muted">登录后管理 UP、飞书群与动态专属路由。</p>
+      <p class="muted">登录后查看充电动态和评论，管理 UP 与通知群。</p>
       <form class="form-stack" @submit.prevent="login">
         <label
           >用户名<input
@@ -308,6 +330,7 @@ onMounted(async () => {
       </form>
       <p v-if="error" class="alert error" role="alert">{{ error }}</p>
     </main>
+    <Reader v-else-if="reading" :route="route" />
     <main v-else class="content">
       <div class="page-heading">
         <div>
@@ -660,20 +683,25 @@ onMounted(async () => {
         </section>
       </template>
     </main>
-    <nav v-if="loggedIn" class="bottom-nav" aria-label="管理导航">
+    <nav v-if="loggedIn" class="bottom-nav" aria-label="页面导航">
+      <button :class="{ active: reading }" @click="navigate('/dynamics')">▤<small>动态</small></button>
       <button
-        :class="{ active: tab === 'ups' }"
+        :class="{ active: !reading && tab === 'ups' }"
         @click="
           tab = 'ups';
           selectedUid = '';
+          navigate('/admin');
+          refresh();
         "
       >
         ◎<small>UP 管理</small></button
       ><button
-        :class="{ active: tab === 'groups' }"
+        :class="{ active: !reading && tab === 'groups' }"
         @click="
           tab = 'groups';
           selectedUid = '';
+          navigate('/admin');
+          refresh();
         "
       >
         ▣<small>飞书群</small>
