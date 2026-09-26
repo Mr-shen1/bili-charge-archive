@@ -1,7 +1,5 @@
 package com.bilicharge.archive;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,10 +15,12 @@ import org.springframework.web.bind.annotation.RestController;
 final class MonitorController {
     private final MonitorMapper mapper;
     private final AdminMapper admin;
+    private final OpsEventService ops;
 
-    MonitorController(MonitorMapper mapper, AdminMapper admin) {
+    MonitorController(MonitorMapper mapper, AdminMapper admin, OpsEventService ops) {
         this.mapper = mapper;
         this.admin = admin;
+        this.ops = ops;
     }
 
     @GetMapping
@@ -41,26 +41,16 @@ final class MonitorController {
 
     @PostMapping("/{uid}/worker-status")
     ApiEnvelope<String> status(@PathVariable String uid, @RequestBody Status status) {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        if (status == null || status.kind == null) {
-            throw new AdminException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_STATUS", "扫描状态无效");
-        }
-        int changed = switch (status.kind) {
-            case "HEARTBEAT" -> mapper.heartbeat(uid, now);
-            case "STARTED" -> mapper.started(uid, now);
-            case "SUCCEEDED" -> mapper.succeeded(uid, now);
-            case "ERROR" -> mapper.errored(uid, now, safeMessage(status.message));
-            default -> throw new AdminException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "INVALID_STATUS", "扫描状态无效");
-        };
-        if (changed == 0) throw new AdminException(HttpStatus.CONFLICT, "UP_DISABLED", "UP 已停用或不存在");
+        if (status == null) throw new AdminException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_STATUS", "扫描状态无效");
+        ops.status(uid, status.kind, status.message);
         return new ApiEnvelope<>("OK");
     }
 
-    // Error text is display-only; reject long upstream payloads and never persist a request header.
-    private String safeMessage(String message) {
-        if (message == null) return "扫描失败";
-        return message.substring(0, Math.min(message.length(), 500));
+    @PostMapping("/{uid}/ops-events")
+    ApiEnvelope<String> opsEvent(@PathVariable String uid, @RequestBody Status event) {
+        if (event == null) throw new AdminException(HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_STATUS", "运维事件无效");
+        ops.event(uid, event.kind, event.message);
+        return new ApiEnvelope<>("OK");
     }
 
     record Config(String uid, boolean enabled, boolean defaultAllConfigured,

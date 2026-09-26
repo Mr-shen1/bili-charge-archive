@@ -86,7 +86,8 @@ interface AdminMapper {
     @Select("""
             SELECT COUNT(*) FROM notification_delivery d
             JOIN notification_event e ON e.id=d.event_id
-            WHERE e.up_uid=#{uid} AND d.status IN ('PENDING','SENDING') AND d.attempts>0
+            WHERE e.up_uid=#{uid} AND e.completed_at IS NULL AND e.canceled_at IS NULL
+              AND d.status IN ('PENDING','SENDING') AND d.attempts>0
             """)
     long failedCount(String uid);
 

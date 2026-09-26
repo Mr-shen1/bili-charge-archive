@@ -68,6 +68,8 @@ services:
       MONITOR_INTERNAL_URL: http://spring-app:8080
       MONITOR_API_TOKEN: ${MONITOR_API_TOKEN:-}
       BILI_COOKIE: ${BILI_COOKIE:-}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
     restart: unless-stopped
 
 volumes:

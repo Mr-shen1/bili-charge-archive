@@ -11,14 +11,27 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin")
 final class AdminController {
     private final AdminService service;
+    private final DeliveryService deliveries;
 
-    AdminController(AdminService service) { this.service = service; }
+    AdminController(AdminService service, DeliveryService deliveries) {
+        this.service = service;
+        this.deliveries = deliveries;
+    }
+
+    @GetMapping("/deliveries")
+    PageEnvelope<DeliveryService.Summary> deliveries(
+            @RequestParam(required = false) String upUid,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String cursor) {
+        return deliveries.recent(upUid, status, cursor);
+    }
 
     @GetMapping("/groups")
     ApiEnvelope<List<AdminService.GroupView>> groups() { return new ApiEnvelope<>(service.groups()); }

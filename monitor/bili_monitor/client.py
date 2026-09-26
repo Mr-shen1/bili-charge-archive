@@ -239,3 +239,16 @@ class InternalClient:
     def status(self, uid, kind, message=None):
         return self.call(f"/internal/ups/{uid}/worker-status",
                          {"kind": kind, "message": message})
+
+    def ops(self, uid, kind, message=None):
+        return self.call(f"/internal/ups/{uid}/ops-events",
+                         {"kind": kind, "message": message})
+
+    def claim(self, worker_id, up_uid=None):
+        return self.call("/internal/deliveries/claim",
+                         {"workerId": worker_id, "upUid": up_uid})
+
+    def delivery_result(self, claim, worker_id, success, error=None):
+        return self.call(f"/internal/deliveries/{claim['eventId']}/{claim['role']}/result",
+                         {"workerId": worker_id, "leaseToken": claim["leaseToken"],
+                          "success": success, "error": error})

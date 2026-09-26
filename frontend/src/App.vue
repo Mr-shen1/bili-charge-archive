@@ -32,6 +32,11 @@ type Route = {
   allGroupId: number | null;
   upGroupId: number | null;
 };
+type Delivery = { eventId: number; role: string; eventType: string; status: string;
+  groupName: string | null; attempts: number; nextRetryAt: string | null;
+  sentAt: string | null; lastError: string | null };
+type DeliveryPage = { data: Delivery[]; page: { nextCursor: string | null;
+  prevCursor: string | null; hasNext: boolean; hasPrev: boolean } };
 type UpPreview = { uid: string; displayName: string; avatarUrl: string };
 type RoutePreview = {
   dynamicId: string;
@@ -67,6 +72,8 @@ const groups = ref<Group[]>([]),
   routes = ref<Route[]>([]);
 const selectedUid = ref(""),
   status = ref<Status | null>(null);
+const deliveryStatus = ref(""),
+  deliveries = ref<DeliveryPage | null>(null);
 const groupId = ref<number | null>(null),
   groupName = ref(""),
   groupWebhook = ref("");
@@ -145,11 +152,26 @@ async function loadSelected() {
   ]);
   status.value = s;
   routes.value = r;
+  try { await loadDeliveries(); }
+  catch (cause) { deliveries.value = null; error.value = cause instanceof Error ? cause.message : "投递记录加载失败"; }
   if (selectedUp.value) {
     opsGroupId.value = selectedUp.value.opsGroupId;
     defaultAllGroupId.value = selectedUp.value.defaultAllGroupId;
     defaultUpGroupId.value = selectedUp.value.defaultUpGroupId;
   }
+}
+async function loadDeliveries(cursor?: string) {
+  if (!selectedUid.value) return;
+  const query = new URLSearchParams({ upUid: selectedUid.value });
+  if (deliveryStatus.value) query.set("status", deliveryStatus.value);
+  if (cursor) query.set("cursor", cursor);
+  const response = await fetch(`/api/admin/deliveries?${query}`, { credentials: "same-origin" });
+  const result = (await response.json()) as DeliveryPage & { message?: string };
+  if (!response.ok) throw new Error(result.message || "投递记录加载失败");
+  deliveries.value = result;
+}
+async function refreshDeliveries(cursor?: string) {
+  await run(() => loadDeliveries(cursor));
 }
 async function login() {
   await run(async () => {
@@ -680,6 +702,31 @@ onUnmounted(() => {
             </div>
             <button class="primary" :disabled="busy">保存专属路由</button>
           </form>
+        </section>
+        <section class="card">
+          <div class="section-heading">
+            <div><h2>飞书投递记录</h2><p>目标首次认领后出现在这里；未认领事件计入上方待发送数。发送记录保留 90 天。</p></div>
+            <button :disabled="busy" @click="refreshDeliveries()">刷新</button>
+          </div>
+          <label>状态筛选
+            <select v-model="deliveryStatus" @change="refreshDeliveries()">
+              <option value="">全部</option><option value="PENDING">待发/重试</option>
+              <option value="SENDING">发送中</option><option value="SENT">已发送</option>
+            </select>
+          </label>
+          <div v-if="!deliveries?.data.length" class="empty">暂无投递记录。</div>
+          <div v-for="item in deliveries?.data || []" :key="`${item.eventId}-${item.role}`" class="list-row">
+            <div class="row-main"><strong>#{{ item.eventId }} · {{ item.eventType }} · {{ item.role }}</strong>
+              <small>{{ item.groupName || '未分配群' }} · {{ item.status }} · 尝试 {{ item.attempts }} 次</small>
+              <small v-if="item.sentAt">已发送：{{ dateOf(item.sentAt) }}</small>
+              <small v-if="item.nextRetryAt">下次重试：{{ dateOf(item.nextRetryAt) }}</small>
+              <small v-if="item.lastError">最近失败：{{ item.lastError }}</small>
+            </div>
+          </div>
+          <div class="row-actions" v-if="deliveries?.page.hasPrev || deliveries?.page.hasNext">
+            <button :disabled="!deliveries?.page.hasPrev" @click="refreshDeliveries(deliveries?.page.prevCursor || undefined)">上一页</button>
+            <button :disabled="!deliveries?.page.hasNext" @click="refreshDeliveries(deliveries?.page.nextCursor || undefined)">下一页</button>
+          </div>
         </section>
       </template>
     </main>

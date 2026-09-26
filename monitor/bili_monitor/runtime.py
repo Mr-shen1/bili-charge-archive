@@ -10,6 +10,7 @@ import threading
 import time
 
 from .client import BiliClient, InternalClient, SourceError
+from .delivery import DeliveryWorker, FeishuSender
 from .scanner import Scanner
 
 
@@ -79,6 +80,11 @@ class Manager:
                     failures = self.failures.get(uid, (0, 0))[0] + 1
                     self.failures[uid] = (failures, self.clock() + min(60, 2 ** min(failures, 6)))
                     LOG.warning("UP %s 子进程退出，等待退避重启", uid)
+                    if hasattr(self.internal, "ops"):
+                        try:
+                            self.internal.ops(uid, "ERROR", "子进程异常退出")
+                        except Exception:
+                            LOG.warning("UP %s 子进程故障通知入队失败", uid)
         for uid in sorted(enabled):
             if uid in self.children or self.failures.get(uid, (0, 0))[1] > self.clock():
                 continue
@@ -115,4 +121,10 @@ def main():
     stop_event = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop_event.set())
     signal.signal(signal.SIGINT, lambda *_: stop_event.set())
+    delivery = DeliveryWorker(InternalClient(base_url, os.environ["MONITOR_API_TOKEN"]),
+                             FeishuSender(os.environ.get("FEISHU_APP_ID", ""),
+                                          os.environ.get("FEISHU_APP_SECRET", "")))
+    thread = threading.Thread(target=delivery.run, args=(stop_event,), daemon=True)
+    thread.start()
     manager.run(stop_event)
+    thread.join(timeout=20)

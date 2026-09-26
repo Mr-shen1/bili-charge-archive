@@ -124,9 +124,13 @@ class Context:
 class Internal:
     def __init__(self):
         self.uids = ["1"]
+        self.events = []
 
     def enabled_uids(self):
         return self.uids
+
+    def ops(self, uid, kind, message):
+        self.events.append((uid, kind, message))
 
 
 def waiting_worker(uid, stop_event, base_url):
@@ -145,6 +149,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(len(context.processes[0].args), 3)  # Cookie only in environment.
         context.processes[0].alive = False
         manager.reconcile()
+        self.assertEqual(internal.events, [("1", "ERROR", "子进程异常退出")])
         self.assertEqual(len(context.processes), 1)
         instant[0] = 3
         manager.reconcile()
