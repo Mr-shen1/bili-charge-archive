@@ -14,6 +14,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 class AdminService {
@@ -22,11 +23,14 @@ class AdminService {
     private final AdminMapper mapper;
     private final WebhookCipher cipher;
     private final BiliPreviewClient bili;
+    private final TransactionTemplate transactions;
 
-    AdminService(AdminMapper mapper, WebhookCipher cipher, BiliPreviewClient bili) {
+    AdminService(AdminMapper mapper, WebhookCipher cipher, BiliPreviewClient bili,
+                 TransactionTemplate transactions) {
         this.mapper = mapper;
         this.cipher = cipher;
         this.bili = bili;
+        this.transactions = transactions;
     }
 
     List<GroupView> groups() {
@@ -134,29 +138,36 @@ class AdminService {
         requireUp(uid);
         String dynamicId = parseId(dynamicIdInput, false);
         validateGroups(null, allGroupId, upGroupId, false);
-        AdminRows.Route existing = mapper.route(dynamicId);
-        if (existing != null && !uid.equals(existing.upUid)) {
-            throw conflict("ROUTE_OWNED_BY_OTHER_UP", "动态已由其他 UP 配置");
-        }
         // Recheck the source when saving, so a forged or stale preview cannot create a fixed target.
         bili.previewDynamic(uid, dynamicId);
-        AdminRows.Route route = new AdminRows.Route();
-        route.dynamicId = dynamicId;
-        route.upUid = uid;
-        route.allGroupId = allGroupId;
-        route.upGroupId = upGroupId;
-        try {
-            if (existing == null) mapper.insertRoute(route);
-            else mapper.updateRoute(route);
-        } catch (DataIntegrityViolationException error) {
-            throw conflict("ROUTE_CONFLICT", "专属路由已变更，请刷新后重试");
-        }
-        return routeView(route);
+        return transactions.execute(status -> {
+            mapper.lockUp(uid);
+            AdminRows.Route existing = mapper.route(dynamicId);
+            if (existing != null && !uid.equals(existing.upUid)) {
+                throw conflict("ROUTE_OWNED_BY_OTHER_UP", "动态已由其他 UP 配置");
+            }
+            AdminRows.Route route = new AdminRows.Route();
+            route.dynamicId = dynamicId;
+            route.upUid = uid;
+            route.allGroupId = allGroupId;
+            route.upGroupId = upGroupId;
+            try {
+                if (existing == null) mapper.insertRoute(route);
+                else mapper.updateRoute(route);
+            } catch (DataIntegrityViolationException error) {
+                throw conflict("ROUTE_CONFLICT", "专属路由已变更，请刷新后重试");
+            }
+            // A new selection must not release previously queued events from other dynamics.
+            mapper.cancelQueuedOutsideRoutes(uid);
+            return routeView(route);
+        });
     }
 
+    @Transactional
     void deleteRoute(String uid, String dynamicIdInput) {
         requireUp(uid);
         String dynamicId = parseId(dynamicIdInput, false);
+        mapper.lockUp(uid);
         if (mapper.deleteRoute(uid, dynamicId) == 0) throw notFound("专属路由不存在");
     }
 

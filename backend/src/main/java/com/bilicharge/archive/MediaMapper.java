@@ -10,18 +10,22 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 interface MediaMapper {
     @Select("""
-            SELECT dynamic_id,position,source_url,oss_key,upload_status,attempts
-            FROM dynamic_image
+            SELECT i.dynamic_id,i.position,i.source_url,i.oss_key,i.upload_status,i.attempts
+            FROM dynamic_image i JOIN dynamic d ON d.dynamic_id=i.dynamic_id
             WHERE upload_status IN ('PENDING','RETRY') AND (retry_at IS NULL OR retry_at<=UTC_TIMESTAMP(3))
-            ORDER BY COALESCE(retry_at,'1970-01-01'),dynamic_id,position LIMIT 10
+              AND (NOT EXISTS (SELECT 1 FROM dynamic_route r WHERE r.up_uid=d.up_uid)
+                   OR EXISTS (SELECT 1 FROM dynamic_route r WHERE r.up_uid=d.up_uid AND r.dynamic_id=i.dynamic_id))
+            ORDER BY COALESCE(retry_at,'1970-01-01'),i.dynamic_id,position LIMIT 10
             """)
     List<MediaRows.Image> dueDynamics();
 
     @Select("""
-            SELECT dynamic_id,rpid,position,source_url,oss_key,upload_status,attempts
-            FROM comment_image
+            SELECT i.dynamic_id,i.rpid,i.position,i.source_url,i.oss_key,i.upload_status,i.attempts
+            FROM comment_image i JOIN dynamic d ON d.dynamic_id=i.dynamic_id
             WHERE upload_status IN ('PENDING','RETRY') AND (retry_at IS NULL OR retry_at<=UTC_TIMESTAMP(3))
-            ORDER BY COALESCE(retry_at,'1970-01-01'),dynamic_id,rpid,position LIMIT 10
+              AND (NOT EXISTS (SELECT 1 FROM dynamic_route r WHERE r.up_uid=d.up_uid)
+                   OR EXISTS (SELECT 1 FROM dynamic_route r WHERE r.up_uid=d.up_uid AND r.dynamic_id=i.dynamic_id))
+            ORDER BY COALESCE(retry_at,'1970-01-01'),i.dynamic_id,rpid,position LIMIT 10
             """)
     List<MediaRows.Image> dueComments();
 

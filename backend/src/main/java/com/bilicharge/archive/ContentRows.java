@@ -23,6 +23,7 @@ final class ContentRows {
         public LocalDateTime publishedAt;
         public long storedCommentCount;
         public boolean sourceUnavailable;
+        public int historyRank;
     }
 
     static final class Comment {

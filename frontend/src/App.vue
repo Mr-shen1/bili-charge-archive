@@ -600,7 +600,7 @@ onUnmounted(() => {
           <div class="section-heading">
             <div>
               <h2>专属动态路由</h2>
-              <p>覆盖默认群；删除后恢复默认路由。</p>
+              <p>配置后，该 UP 只采集这些专属动态；删除最后一条后恢复最新 50 条扫描。已存历史仍可查看。</p>
             </div>
             <span class="count">{{ routes.length }} 条</span>
           </div>

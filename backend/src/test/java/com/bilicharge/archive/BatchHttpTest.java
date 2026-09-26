@@ -21,6 +21,7 @@ class BatchHttpTest extends MySqlTestBase {
     @Autowired TestRestTemplate http;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
+    @Autowired AdminMapper admin;
 
     @Test
     void baselineWaitsForCompletionAndLaterCommentsAreReady() {
@@ -250,6 +251,51 @@ class BatchHttpTest extends MySqlTestBase {
             assertThat(jdbc.queryForObject("SELECT ready_at IS NOT NULL FROM notification_event WHERE dedupe_key=?",
                     Boolean.class, "comment:" + fixture.dynamicId + ":1003")).isTrue();
             assertThat(count("notification_event", "dynamic_id", fixture.dynamicId)).isEqualTo(3);
+        } finally {
+            fixture.cleanup();
+        }
+    }
+
+    @Test
+    void dedicatedRouteRejectsBatchesForOtherDynamics() {
+        Fixture fixture = fixture(true);
+        try {
+            long allGroup = jdbc.queryForObject("SELECT id FROM feishu_group WHERE name=?",
+                    Long.class, fixture.groupName);
+            jdbc.update("INSERT INTO dynamic_route(dynamic_id,up_uid,all_group_id) VALUES(?,?,?)",
+                    fixture.dynamicId + "1", fixture.uid, allGroup);
+            BatchRequest.Item other = item(fixture, "范围外", List.of(), List.of());
+            assertThat(post(fixture, batch(List.of(other), List.of(), List.of())).getStatusCode())
+                    .isEqualTo(HttpStatus.CONFLICT);
+            assertThat(count("dynamic", "dynamic_id", fixture.dynamicId)).isZero();
+            assertThat(post(fixture, batch(List.of(), List.of(fixture.dynamicId), List.of())).getStatusCode())
+                    .isEqualTo(HttpStatus.CONFLICT);
+            assertThat(post(fixture, batch(List.of(), List.of(), List.of(
+                    new BatchRequest.AvailabilityChange(fixture.dynamicId, null, true)))).getStatusCode())
+                    .isEqualTo(HttpStatus.CONFLICT);
+        } finally {
+            fixture.cleanup();
+        }
+    }
+
+    @Test
+    void selectingDedicatedRouteCancelsOldQueuedEventsWithoutDeletingContent() {
+        Fixture fixture = fixture(true);
+        try {
+            submit(fixture, batch(List.of(item(fixture, "保留历史", List.of(), List.of())),
+                    List.of(fixture.dynamicId), List.of()));
+            assertThat(admin.pendingCount(fixture.uid)).isEqualTo(1);
+            long allGroup = jdbc.queryForObject("SELECT id FROM feishu_group WHERE name=?",
+                    Long.class, fixture.groupName);
+            jdbc.update("INSERT INTO dynamic_route(dynamic_id,up_uid,all_group_id) VALUES(?,?,?)",
+                    fixture.dynamicId + "1", fixture.uid, allGroup);
+            assertThat(admin.cancelQueuedOutsideRoutes(fixture.uid)).isEqualTo(1);
+            assertThat(admin.pendingCount(fixture.uid)).isZero();
+            assertThat(jdbc.queryForObject("SELECT canceled_at IS NOT NULL FROM notification_event WHERE dynamic_id=?",
+                    Boolean.class, fixture.dynamicId)).isTrue();
+            assertThat(count("dynamic", "dynamic_id", fixture.dynamicId)).isEqualTo(1);
+            jdbc.update("DELETE FROM dynamic_route WHERE up_uid=?", fixture.uid);
+            assertThat(admin.pendingCount(fixture.uid)).isZero();
         } finally {
             fixture.cleanup();
         }

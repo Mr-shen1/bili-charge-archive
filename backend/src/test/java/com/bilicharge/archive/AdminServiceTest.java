@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,7 @@ class AdminServiceTest extends MySqlTestBase {
     @Autowired AdminMapper mapper;
     @Autowired WebhookCipher cipher;
     @Autowired ObjectMapper json;
+    @Autowired JdbcTemplate jdbc;
     @MockitoBean BiliPreviewClient bili;
 
     private static final String UID = "550494308";
@@ -113,6 +115,34 @@ class AdminServiceTest extends MySqlTestBase {
         service.saveRoute(UID, DYNAMIC_ID, null, own);
         assertThat(service.routes(UID)).extracting(AdminService.RouteView::upGroupId).containsExactly(own);
         assertThat(service.routes(UID)).extracting(AdminService.RouteView::allGroupId).containsExactly((Long) null);
+    }
+
+    @Test
+    void savingFirstDedicatedRouteCancelsOtherQueuedEvents() {
+        long group = group("route-scope");
+        when(bili.previewUser(UID)).thenReturn(new BiliPreviewClient.User(UID, "测试 UP", ""));
+        service.createUp(UID, group, group, null);
+        String historical = DYNAMIC_ID + "1";
+        jdbc.update("""
+                INSERT INTO dynamic(dynamic_id,up_uid,content_text,published_at,comment_oid,
+                                    comment_type,first_seen_at,last_seen_at)
+                VALUES(?,?, '历史',UTC_TIMESTAMP(3),'123',11,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))
+                """, historical, UID);
+        jdbc.update("""
+                INSERT INTO notification_event(dedupe_key,up_uid,dynamic_id,event_type,message_text,ready_at)
+                VALUES(?,?,?,'DYNAMIC','历史通知',UTC_TIMESTAMP(3))
+                """, "dynamic:" + historical, UID, historical);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM notification_event WHERE up_uid=?",
+                Long.class, UID)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM notification_event WHERE up_uid=? AND completed_at IS NULL AND canceled_at IS NULL",
+                Long.class, UID)).isEqualTo(1);
+        when(bili.previewDynamic(UID, DYNAMIC_ID)).thenReturn(dynamic());
+        service.saveRoute(UID, DYNAMIC_ID, group, null);
+        assertThat(service.status(UID).pendingCount()).isZero();
+        assertThat(jdbc.queryForObject("SELECT canceled_at IS NOT NULL FROM notification_event WHERE dynamic_id=?",
+                Boolean.class, historical)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dynamic WHERE dynamic_id=?",
+                Integer.class, historical)).isEqualTo(1);
     }
 
     private BiliPreviewClient.Dynamic dynamic() {

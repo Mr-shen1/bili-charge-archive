@@ -144,6 +144,23 @@ class MediaFlowTest extends MySqlTestBase {
         }
     }
 
+    @Test
+    void pendingHistoricalImagesPauseOutsideDedicatedScope() {
+        Fixture fixture = create(true);
+        try {
+            jdbc.update("INSERT INTO dynamic_route(dynamic_id,up_uid,all_group_id) VALUES (?,?,?)",
+                    fixture.dynamicId + "1", fixture.uid, fixture.groupId);
+            assertThat(mapper.dueDynamics()).noneMatch(row -> row.dynamicId.equals(fixture.dynamicId));
+            assertThat(mapper.dueComments()).noneMatch(row -> row.dynamicId.equals(fixture.dynamicId));
+            jdbc.update("DELETE FROM dynamic_route WHERE up_uid=?", fixture.uid);
+            assertThat(mapper.dueDynamics()).anyMatch(row -> row.dynamicId.equals(fixture.dynamicId));
+            assertThat(mapper.dueComments()).anyMatch(row -> row.dynamicId.equals(fixture.dynamicId));
+        } finally {
+            jdbc.update("DELETE FROM dynamic_route WHERE up_uid=?", fixture.uid);
+            fixture.close();
+        }
+    }
+
     private MockHttpSession login() throws Exception {
         return (MockHttpSession) mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"username\":\"" + USERNAME + "\",\"password\":\"" + PASSWORD + "\"}"))

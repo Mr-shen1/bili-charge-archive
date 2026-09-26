@@ -111,7 +111,29 @@ class ContentHttpTest extends MySqlTestBase {
             assertThat(new HashSet<>(data(replies).stream().map(row -> row.get("rpid")).toList()))
                     .doesNotContain(data(lastReply).getFirst().get("rpid"));
             assertThat(get("/api/ups", cookie).get("data").toString()).contains(uid, otherUid);
+
+            jdbc.update("INSERT INTO dynamic_route(dynamic_id,up_uid,all_group_id) VALUES (?,?,?)",
+                    firstDynamic, uid, groupId);
+            Map ranked = get("/api/dynamics?upUid=" + uid, cookie);
+            assertThat(data(ranked).getFirst()).containsEntry("dynamicId", firstDynamic)
+                    .containsEntry("historical", false);
+            assertThat(data(ranked).get(1)).containsEntry("historical", true);
+            Map rankedAll = get("/api/dynamics", cookie);
+            assertThat(data(rankedAll).get(0)).containsEntry("dynamicId", otherDynamic)
+                    .containsEntry("historical", false);
+            assertThat(data(rankedAll).get(1)).containsEntry("dynamicId", firstDynamic)
+                    .containsEntry("historical", false);
+            assertThat(data(rankedAll).get(2)).containsEntry("historical", true);
+            Map historicalLast = get("/api/dynamics?upUid=" + uid + "&cursor=" + enc(next(ranked)), cookie);
+            assertThat(data(historicalLast)).hasSize(1);
+            assertThat(data(historicalLast).getFirst()).containsEntry("historical", true);
+            assertThat(data(get("/api/dynamics?upUid=" + uid + "&cursor=" + enc(prev(historicalLast)), cookie)))
+                    .extracting(row -> row.get("dynamicId")).containsExactlyElementsOf(
+                            data(ranked).stream().map(row -> row.get("dynamicId")).toList());
+            assertThat(((Map) get("/api/dynamics/88000000000000000002", cookie).get("data")))
+                    .containsEntry("historical", true);
         } finally {
+            jdbc.update("DELETE FROM dynamic_route WHERE up_uid=?", uid);
             jdbc.update("DELETE FROM comment_image WHERE dynamic_id LIKE '880000000000000000%'");
             jdbc.update("DELETE FROM dynamic_image WHERE dynamic_id LIKE '880000000000000000%'");
             jdbc.update("DELETE FROM comment WHERE dynamic_id LIKE '880000000000000000%'");

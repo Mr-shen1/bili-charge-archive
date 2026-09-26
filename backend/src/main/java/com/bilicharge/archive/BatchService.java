@@ -45,6 +45,8 @@ class BatchService {
         if (enabled == null) throw new AdminException(HttpStatus.NOT_FOUND, "NOT_FOUND", "UP 不存在");
         if (enabled == 0) throw new AdminException(HttpStatus.CONFLICT, "UP_DISABLED", "UP 已停用");
         AdminRows.Up up = admin.up(uid);
+        Set<String> selectedDynamics = admin.routes(uid).stream()
+                .map(route -> route.dynamicId).collect(java.util.stream.Collectors.toSet());
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         Set<String> seenDynamics = new HashSet<>();
         Set<String> seenComments = new HashSet<>();
@@ -59,6 +61,7 @@ class BatchService {
             }
             BatchRequest.Dynamic dynamic = item.dynamic();
             String dynamicId = id(dynamic.dynamicId(), "动态 ID");
+            requireSelected(selectedDynamics, dynamicId);
             if (!uid.equals(dynamic.upUid()) || !seenDynamics.add(dynamicId)) {
                 throw invalid("动态归属或批次内动态 ID 无效");
             }
@@ -121,6 +124,7 @@ class BatchService {
         Set<String> completionIds = new HashSet<>();
         for (String raw : completed) {
             String dynamicId = id(raw, "基线动态 ID");
+            requireSelected(selectedDynamics, dynamicId);
             if (!completionIds.add(dynamicId)) throw invalid("基线完成 ID 重复");
             if (!uid.equals(mapper.dynamicOwner(dynamicId)) || mapper.scanStateExists(dynamicId) == 0) {
                 throw invalid("基线动态不存在或扫描状态尚未保存");
@@ -133,6 +137,7 @@ class BatchService {
         for (BatchRequest.AvailabilityChange change : availability) {
             if (change == null || change.unavailable() == null) throw invalid("来源状态无效");
             String dynamicId = id(change.dynamicId(), "来源动态 ID");
+            requireSelected(selectedDynamics, dynamicId);
             if (!uid.equals(mapper.dynamicOwner(dynamicId))) throw invalid("来源动态不属于该 UP");
             String rpid = change.rpid() == null ? null : id(change.rpid(), "来源评论 ID");
             String key = dynamicId + ":" + (rpid == null ? "" : rpid);
@@ -283,6 +288,12 @@ class BatchService {
     private String id(String raw, String label) {
         if (raw == null || !ID.matcher(raw).matches()) throw invalid(label + " 格式无效");
         return raw;
+    }
+
+    private void requireSelected(Set<String> selectedDynamics, String dynamicId) {
+        if (!selectedDynamics.isEmpty() && !selectedDynamics.contains(dynamicId)) {
+            throw new AdminException(HttpStatus.CONFLICT, "SCAN_SCOPE_CHANGED", "该 UP 当前只采集专属动态");
+        }
     }
 
     private static <T> List<T> list(List<T> value) {

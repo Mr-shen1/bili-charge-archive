@@ -13,30 +13,43 @@ interface ContentMapper {
 
     @Select("""
             <script>
-            SELECT d.dynamic_id,d.up_uid,u.display_name AS up_name,u.avatar_url AS up_avatar_url,
-                   u.enabled AS up_enabled,d.title,d.content_text AS text,d.published_at,
-                   d.source_unavailable_at IS NOT NULL AS source_unavailable,
-                   (SELECT COUNT(*) FROM comment c WHERE c.dynamic_id=d.dynamic_id) AS stored_comment_count
-            FROM dynamic d JOIN up_account u ON u.uid=d.up_uid
+            SELECT ranked.* FROM (
+              SELECT d.dynamic_id,d.up_uid,u.display_name AS up_name,u.avatar_url AS up_avatar_url,
+                     u.enabled AS up_enabled,d.title,d.content_text AS text,d.published_at,
+                     d.source_unavailable_at IS NOT NULL AS source_unavailable,
+                     (SELECT COUNT(*) FROM comment c WHERE c.dynamic_id=d.dynamic_id) AS stored_comment_count,
+                     CASE WHEN EXISTS (SELECT 1 FROM dynamic_route r WHERE r.up_uid=d.up_uid)
+                               AND NOT EXISTS (SELECT 1 FROM dynamic_route r WHERE r.dynamic_id=d.dynamic_id)
+                          THEN 1 ELSE 0 END AS history_rank
+              FROM dynamic d JOIN up_account u ON u.uid=d.up_uid
+            ) ranked
             WHERE 1=1
-            <if test='upUid != null'>AND d.up_uid=#{upUid}</if>
+            <if test='upUid != null'>AND ranked.up_uid=#{upUid}</if>
             <if test='at != null'>
-              AND (d.published_at ${operator} #{at}
-                   OR (d.published_at=#{at} AND (LENGTH(d.dynamic_id),d.dynamic_id) ${operator} (LENGTH(#{id}),#{id})))
+              AND (ranked.history_rank ${rankOperator} #{rank}
+                   OR (ranked.history_rank=#{rank}
+                       AND (ranked.published_at ${operator} #{at}
+                            OR (ranked.published_at=#{at} AND (LENGTH(ranked.dynamic_id),ranked.dynamic_id) ${operator} (LENGTH(#{id}),#{id})))))
             </if>
-            ORDER BY d.published_at ${order},LENGTH(d.dynamic_id) ${order},d.dynamic_id ${order}
+            ORDER BY ranked.history_rank ${rankOrder},ranked.published_at ${order},
+                     LENGTH(ranked.dynamic_id) ${order},ranked.dynamic_id ${order}
             LIMIT 21
             </script>
             """)
     List<ContentRows.Dynamic> dynamics(@Param("upUid") String upUid, @Param("at") LocalDateTime at,
-                                       @Param("id") String id, @Param("operator") String operator,
-                                       @Param("order") String order);
+                                       @Param("id") String id, @Param("rank") Integer rank,
+                                       @Param("operator") String operator, @Param("order") String order,
+                                       @Param("rankOperator") String rankOperator,
+                                       @Param("rankOrder") String rankOrder);
 
     @Select("""
             SELECT d.dynamic_id,d.up_uid,u.display_name AS up_name,u.avatar_url AS up_avatar_url,
                    u.enabled AS up_enabled,d.title,d.content_text AS text,d.published_at,
                    d.source_unavailable_at IS NOT NULL AS source_unavailable,
-                   (SELECT COUNT(*) FROM comment c WHERE c.dynamic_id=d.dynamic_id) AS stored_comment_count
+                   (SELECT COUNT(*) FROM comment c WHERE c.dynamic_id=d.dynamic_id) AS stored_comment_count,
+                   CASE WHEN EXISTS (SELECT 1 FROM dynamic_route r WHERE r.up_uid=d.up_uid)
+                             AND NOT EXISTS (SELECT 1 FROM dynamic_route r WHERE r.dynamic_id=d.dynamic_id)
+                        THEN 1 ELSE 0 END AS history_rank
             FROM dynamic d JOIN up_account u ON u.uid=d.up_uid WHERE d.dynamic_id=#{id}
             """)
     ContentRows.Dynamic dynamic(String id);

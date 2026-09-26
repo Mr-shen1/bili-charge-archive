@@ -24,12 +24,13 @@ class ContentService {
     record Image(int position, String status, String url) {}
     record Dynamic(String dynamicId, String upUid, String upName, String upAvatarUrl,
                    boolean upEnabled, String title, String text, String publishedAt,
-                   long storedCommentCount, boolean sourceUnavailable, List<Image> images) {}
+                   long storedCommentCount, boolean historical, boolean sourceUnavailable,
+                   List<Image> images) {}
     record Comment(String dynamicId, String rpid, String rootRpid, String parentRpid,
                    String authorMid, String authorName, String authorAvatarUrl, int authorLevel,
                    String text, String publishedAt, long likeCount, long replyCount,
                    long storedReplyCount, boolean isUp, boolean sourceUnavailable, List<Image> images) {}
-    private record Cursor(String scope, boolean previous, LocalDateTime at, String id) {}
+    private record Cursor(String scope, boolean previous, LocalDateTime at, String id, int rank) {}
 
     @Transactional(readOnly = true)
     List<Up> ups() {
@@ -46,9 +47,11 @@ class ContentService {
         Cursor cursor = decode(rawCursor, scope);
         boolean previous = cursor != null && cursor.previous;
         List<ContentRows.Dynamic> found = mapper.dynamics(upUid, cursor == null ? null : cursor.at,
-                cursor == null ? null : cursor.id, previous ? ">" : "<", previous ? "ASC" : "DESC");
+                cursor == null ? null : cursor.id, cursor == null ? null : cursor.rank,
+                previous ? ">" : "<", previous ? "ASC" : "DESC",
+                previous ? "<" : ">", previous ? "DESC" : "ASC");
         return page(found, cursor, scope, row -> row.publishedAt, row -> row.dynamicId,
-                this::dynamic);
+                this::dynamic, row -> row.historyRank);
     }
 
     @Transactional(readOnly = true)
@@ -77,7 +80,7 @@ class ContentService {
                 cursor == null ? null : cursor.at, cursor == null ? null : cursor.id,
                 operator, order);
         return page(found, cursor, scope, row -> row.publishedAt, row -> row.rpid,
-                this::comment);
+                this::comment, null);
     }
 
     private Dynamic dynamic(ContentRows.Dynamic row) {
@@ -86,7 +89,7 @@ class ContentService {
                         "/api/media/dynamics/" + row.dynamicId + "/" + image.position)).toList();
         return new Dynamic(row.dynamicId, row.upUid, row.upName, row.upAvatarUrl,
                 row.upEnabled, row.title, row.text, utc(row.publishedAt),
-                row.storedCommentCount, row.sourceUnavailable, images);
+                row.storedCommentCount, row.historyRank == 1, row.sourceUnavailable, images);
     }
 
     private Comment comment(ContentRows.Comment row) {
@@ -101,7 +104,7 @@ class ContentService {
 
     private <R, T> PageEnvelope<T> page(List<R> found, Cursor cursor, String scope,
             Function<R, LocalDateTime> time, Function<R, String> id,
-            Function<R, T> view) {
+            Function<R, T> view, Function<R, Integer> rank) {
         boolean extra = found.size() > PageEnvelope.PAGE_SIZE;
         List<R> slice = new ArrayList<>(found.subList(0, Math.min(found.size(), PageEnvelope.PAGE_SIZE)));
         boolean previous = cursor != null && cursor.previous;
@@ -109,15 +112,19 @@ class ContentService {
         boolean hasPrev = previous ? extra : cursor != null;
         boolean hasNext = previous ? cursor != null : extra;
         String next = hasNext && !slice.isEmpty()
-                ? encode(scope, false, time.apply(slice.getLast()), id.apply(slice.getLast())) : null;
+                ? encode(scope, false, time.apply(slice.getLast()), id.apply(slice.getLast()),
+                         rank == null ? null : rank.apply(slice.getLast())) : null;
         String prev = hasPrev && !slice.isEmpty()
-                ? encode(scope, true, time.apply(slice.getFirst()), id.apply(slice.getFirst())) : null;
+                ? encode(scope, true, time.apply(slice.getFirst()), id.apply(slice.getFirst()),
+                         rank == null ? null : rank.apply(slice.getFirst())) : null;
         return new PageEnvelope<>(slice.stream().map(view).toList(),
                 new PageEnvelope.Page(PageEnvelope.PAGE_SIZE, next, prev, hasNext, hasPrev));
     }
 
-    private String encode(String scope, boolean previous, LocalDateTime at, String id) {
-        String plain = String.join("|", "v1", scope, previous ? "p" : "n", at.toString(), id);
+    private String encode(String scope, boolean previous, LocalDateTime at, String id, Integer rank) {
+        String plain = rank == null
+                ? String.join("|", "v1", scope, previous ? "p" : "n", at.toString(), id)
+                : String.join("|", "v2", scope, previous ? "p" : "n", rank.toString(), at.toString(), id);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(plain.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -127,10 +134,20 @@ class ContentService {
         try {
             String plain = new String(Base64.getUrlDecoder().decode(raw), StandardCharsets.UTF_8);
             String[] parts = plain.split("\\|", -1);
-            if (parts.length != 5 || !parts[0].equals("v1") || !parts[1].equals(scope)
+            boolean dynamic = scope.startsWith("d:");
+            if (dynamic ? parts.length != 6 || !parts[0].equals("v2")
+                        : parts.length != 5 || !parts[0].equals("v1")) throw invalidCursor();
+            if (!parts[1].equals(scope)
                     || !(parts[2].equals("p") || parts[2].equals("n"))) throw invalidCursor();
-            if (!parts[4].matches("[1-9][0-9]{0,31}")) throw invalidCursor();
-            return new Cursor(scope, parts[2].equals("p"), LocalDateTime.parse(parts[3]), parts[4]);
+            int shift = dynamic ? 1 : 0;
+            int rank = 0;
+            if (dynamic) {
+                if (!(parts[3].equals("0") || parts[3].equals("1"))) throw invalidCursor();
+                rank = Integer.parseInt(parts[3]);
+            }
+            if (!parts[4 + shift].matches("[1-9][0-9]{0,31}")) throw invalidCursor();
+            return new Cursor(scope, parts[2].equals("p"), LocalDateTime.parse(parts[3 + shift]),
+                    parts[4 + shift], rank);
         } catch (IllegalArgumentException | DateTimeParseException error) {
             throw invalidCursor();
         }

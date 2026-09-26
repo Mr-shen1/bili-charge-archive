@@ -17,7 +17,7 @@
 
 常用 HTTP 状态：401 未登录、403 CSRF/内部令牌失败、404 资源不存在、409 状态冲突或群仍被引用、422 输入与来源校验失败、502 上游 B 站/飞书响应异常、503 本地依赖暂不可用。错误响应不得包含 Cookie、Webhook、AccessKey 或完整外部响应。
 
-列表采用不透明 cursor 的稳定键集分页，固定 pageSize=20；不提供任意大小查询。列表返回 nextCursor、prevCursor、hasNext、hasPrev，前端显示“上一页/下一页”。动态按 (publishedAt, dynamicId) 倒序；根评论同样倒序；楼中楼正序。
+列表采用不透明 cursor 的稳定键集分页，固定 pageSize=20；不提供任意大小查询。列表返回 nextCursor、prevCursor、hasNext、hasPrev，前端显示“上一页/下一页”。动态先按当前采集范围（historical=false 在前），再按 (publishedAt, dynamicId) 倒序；动态 cursor 包含历史分组，路由变化后应从列表首页重新浏览。根评论按时间、ID 倒序；楼中楼正序。
 
 ## 2. 登录与内容
 
@@ -49,6 +49,7 @@
       "text":"示例文字",
       "publishedAt":"2026-09-25T08:00:00Z",
       "storedCommentCount":42,
+      "historical":false,
       "sourceUnavailable":false,
       "images":[{"position":0,"status":"READY","url":"/api/media/dynamics/1234567890123456789/0"}]
     }
@@ -71,12 +72,12 @@
 | PATCH /api/admin/ups/{uid} | 更新启停、运维群和默认路由，仍须满足非空与互异约束 |
 | GET /api/admin/ups/{uid}/routes | 该 UP 的专属动态路由 |
 | POST /api/admin/ups/{uid}/routes/preview | 输入动态 ID 或链接，校验作者、充电属性、文字/图片类型和评论目标，返回可保存资料 |
-| PUT /api/admin/ups/{uid}/routes/{dynamicId} | 创建/修改专属路由：allGroupId、upGroupId 至少一项且不同 |
-| DELETE /api/admin/ups/{uid}/routes/{dynamicId} | 删除专属路由；后续使用 UP 默认路由，已存内容与已发通知不删除 |
+| PUT /api/admin/ups/{uid}/routes/{dynamicId} | 创建/修改专属路由：allGroupId、upGroupId 至少一项且不同；该 UP 有专属路由后仅采集专属动态，其他动态的未发事件作废 |
+| DELETE /api/admin/ups/{uid}/routes/{dynamicId} | 删除专属路由；删除最后一条后恢复最新 50 条扫描和默认路由，已存内容与已作废事件不恢复或补发 |
 | GET /api/admin/ups/{uid}/status | 最近成功扫描、进程心跳、最近错误、待发/失败数量 |
 | GET /api/admin/deliveries | 可选 upUid、status、cursor；展示待发/失败及近 90 天成功记录 |
 
-群 ID 用数字型数据库 ID，B 站 ID 用字符串。Webhook 更新或路由变更后，尚未成功的目标在下次认领时使用最新配置；已成功目标不再发送。无手动重扫和重发接口。
+群 ID 用数字型数据库 ID，B 站 ID 用字符串。Webhook 更新或路由变更后，仍在采集范围内且尚未成功的目标在下次认领时使用最新配置；非专属动态的未发事件一旦因切换专属模式作废，后续不得认领。已成功目标不再发送。无手动重扫和重发接口。
 
 M2 实现中，两个预览接口的请求体均为 `{ "input": "数字 ID 或链接" }`。群响应包含 `id/name/webhookConfigured/referenced/references`，其中 `references` 是被引用的位置说明，不含 Webhook。UP 列表含启停、默认群 ID 和状态摘要；状态接口单独返回扫描心跳、最近成功和错误时间、待发及失败重试数量。专属路由响应含动态 ID、UP UID 与两个可为空的群 ID。无效群配置与不合格动态返回 422，已有配置冲突或引用中的群删除返回 409；B 站预览暂不可用或无权访问时返回 502，未配置预览 Cookie 时返回 503。错误体仍使用本文件第 1 节的统一格式。
 
@@ -98,6 +99,7 @@ M4 实现的读取响应：`GET /internal/ups?enabled=true` 返回 `{"data":["55
 `allConfigured`、`upConfigured`）和 `scans`。每个扫描状态含 `dynamicId`、
 `stateJson`（数据库 JSON 的字符串形式）、`lastCompleteScanAt`、
 `lastFullScanAt`、`fullScanRetryAt`、`baselineCompletedAt`。读取接口不返回 Webhook。
+`fixedRoutes` 为空时扫描空间最新 50 条；非空时只逐条扫描其中的动态，不请求空间列表。批次接口对当前专属模式之外的动态、基线完成或来源变化返回 `409 SCAN_SCOPE_CHANGED`，以阻止配置切换前启动的旧轮次写入。
 Spring 的 `LocalDateTime` 响应没有时区后缀；Python 将其按 UTC 补全为带 `Z` 的时间后才回传批次接口。
 `POST /internal/ups/{uid}/worker-status` 接收 `{"kind":"STARTED|SUCCEEDED|ERROR|HEARTBEAT","message":null}`；
 `ERROR` 的 `message` 限 500 字符，UP 已停用时返回 `409 UP_DISABLED`。

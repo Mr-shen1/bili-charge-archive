@@ -8,7 +8,7 @@ type Up = { uid: string; displayName: string; avatarUrl: string | null; enabled:
 type Image = { position: number; status: "PENDING" | "RETRY" | "READY" | "UNAVAILABLE"; url: string };
 type Dynamic = { dynamicId: string; upUid: string; upName: string; upAvatarUrl: string | null;
   upEnabled: boolean; title: string | null; text: string; publishedAt: string;
-  storedCommentCount: number; sourceUnavailable: boolean; images: Image[] };
+  storedCommentCount: number; historical: boolean; sourceUnavailable: boolean; images: Image[] };
 type Comment = { dynamicId: string; rpid: string; rootRpid: string | null; parentRpid: string | null;
   authorMid: string; authorName: string; authorAvatarUrl: string | null; authorLevel: number;
   text: string; publishedAt: string; likeCount: number; replyCount: number;
@@ -193,6 +193,7 @@ onUnmounted(() => { if (imageRefresh) clearInterval(imageRefresh); });
       <button v-for="item in list?.data || []" :key="item.dynamicId" class="dynamic-card" @click="open(item.dynamicId)">
         <div class="reader-author"><img v-if="item.upAvatarUrl" :src="item.upAvatarUrl" referrerpolicy="no-referrer" alt="" />
           <div><strong>{{ item.upName }}</strong><small>{{ date(item.publishedAt) }}</small></div>
+          <span v-if="item.historical" class="reader-tag">历史 · 停止采集</span>
           <span v-if="!item.upEnabled" class="reader-tag">UP 已停用</span></div>
         <strong v-if="item.title" class="dynamic-title">{{ item.title }}</strong>
         <p class="reader-text clamp">{{ item.text }}</p>
@@ -208,6 +209,7 @@ onUnmounted(() => { if (imageRefresh) clearInterval(imageRefresh); });
       <article v-if="detail" class="dynamic-card detail-card">
         <div class="reader-author"><img v-if="detail.upAvatarUrl" :src="detail.upAvatarUrl" referrerpolicy="no-referrer" alt="" />
           <div><strong>{{ detail.upName }}</strong><small>{{ date(detail.publishedAt) }}</small></div>
+          <span v-if="detail.historical" class="reader-tag">历史 · 停止采集</span>
           <span v-if="!detail.upEnabled" class="reader-tag">UP 已停用</span></div>
         <h1 v-if="detail.title" class="dynamic-title">{{ detail.title }}</h1>
         <p class="reader-text">{{ detail.text }}</p><MediaImages :images="detail.images" />

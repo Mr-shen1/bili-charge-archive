@@ -67,8 +67,21 @@ interface AdminMapper {
             """)
     int updateUp(AdminRows.Up up);
 
-    @Select("SELECT COUNT(*) FROM notification_event WHERE up_uid=#{uid} AND completed_at IS NULL")
+    @Select("SELECT COUNT(*) FROM notification_event WHERE up_uid=#{uid} AND completed_at IS NULL AND canceled_at IS NULL")
     long pendingCount(String uid);
+
+    @Select("SELECT uid FROM up_account WHERE uid=#{uid} FOR UPDATE")
+    String lockUp(String uid);
+
+    @Update("""
+            UPDATE notification_event e SET canceled_at=UTC_TIMESTAMP(3)
+            WHERE e.up_uid=#{uid} AND e.dynamic_id IS NOT NULL
+              AND e.completed_at IS NULL AND e.canceled_at IS NULL
+              AND EXISTS (SELECT 1 FROM dynamic_route r WHERE r.up_uid=#{uid})
+              AND NOT EXISTS (SELECT 1 FROM dynamic_route r
+                              WHERE r.up_uid=#{uid} AND r.dynamic_id=e.dynamic_id)
+            """)
+    int cancelQueuedOutsideRoutes(String uid);
 
     @Select("""
             SELECT COUNT(*) FROM notification_delivery d

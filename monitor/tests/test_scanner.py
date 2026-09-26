@@ -107,14 +107,24 @@ class ScannerTest(unittest.TestCase):
     def make(self, source, internal):
         return Scanner(source, internal, UID, clock=lambda: "2024-01-01T00:00:00Z")
 
-    def test_raw_fifty_boundary_and_fixed_target_deduplicate(self):
+    def test_fixed_routes_replace_space_scan(self):
         space = [dynamic(i, charge=i == 100) for i in range(100, 49, -1)]
-        space[1]["modules"]["module_author"]["icon_badge"] = None
-        source = Source(space, {"50": dynamic(50)})
+        source = Source(space, {"50": dynamic(50), "100": dynamic(100)})
         internal = Internal([{"dynamicId": "50"}, {"dynamicId": "100"}])
         self.make(source, internal).round()
         self.assertEqual(set(internal.contents), {"100", "50"})
-        self.assertEqual([call for call in source.calls if call[0] == "detail"], [("detail", "50")])
+        self.assertNotIn(("space", UID), source.calls)
+        self.assertEqual([call for call in source.calls if call[0] == "detail"],
+                         [("detail", "50"), ("detail", "100")])
+
+    def test_no_fixed_route_scans_raw_fifty_before_filtering(self):
+        space = [dynamic(i, charge=i == 100) for i in range(100, 49, -1)]
+        source = Source(space)
+        internal = Internal()
+        self.make(source, internal).round()
+        self.assertEqual(set(internal.contents), {"100"})
+        self.assertIn(("space", UID), source.calls)
+        self.assertFalse(any(call[0] == "detail" for call in source.calls))
 
     def test_baseline_up_root_and_nested_large_ids(self):
         big = "12345678901234567890123456789012"

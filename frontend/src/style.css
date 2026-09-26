@@ -86,6 +86,7 @@ button.dynamic-card:hover { border-color: #ec5b7e; }
 .reader-author small { color: #8a97a5; font-size: 11px; }
 .reader-tag, .up-label { color: #a06212; background: #fff3dd; border-radius: 99px; font-size: 11px; padding: 3px 7px; white-space: nowrap; }
 .reader-tag { margin-left: auto; }
+.reader-tag + .reader-tag { margin-left: 6px; }
 .up-label { color: #d84268; background: #fff0f4; }
 .dynamic-title { display: block; font-size: 17px; margin-bottom: 7px; }
 .reader-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 14px; margin: 0 0 12px; }

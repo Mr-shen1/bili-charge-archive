@@ -113,15 +113,16 @@ class Scanner:
         if not config["enabled"] or self.should_stop():
             return False
         scans = {row["dynamicId"]: row for row in config["scans"]}
-        raw = self.source.latest_fifty(self.uid)
         dynamics = {}
-        for item in raw:
-            if self.should_stop():
-                return False
-            parsed = parse_dynamic(item, self.uid)
-            if parsed is not None:
-                dynamics[parsed["dynamicId"]] = parsed
-        for route in config["fixedRoutes"]:
+        routes = config["fixedRoutes"]
+        if not routes:
+            for item in self.source.latest_fifty(self.uid):
+                if self.should_stop():
+                    return False
+                parsed = parse_dynamic(item, self.uid)
+                if parsed is not None:
+                    dynamics[parsed["dynamicId"]] = parsed
+        for route in routes:
             if self.should_stop():
                 return False
             dynamic_id = numeric(route["dynamicId"])
