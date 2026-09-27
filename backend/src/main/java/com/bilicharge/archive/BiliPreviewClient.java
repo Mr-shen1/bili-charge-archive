@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 @Component
 class BiliPreviewClient {
     private static final Set<String> CONTENT_TYPES = Set.of("DYNAMIC_TYPE_WORD", "DYNAMIC_TYPE_DRAW", "DYNAMIC_TYPE_ARTICLE");
-    private static final Set<String> MAJOR_TYPES = Set.of("MAJOR_TYPE_OPUS", "MAJOR_TYPE_DRAW");
+    private static final Set<String> MAJOR_TYPES = Set.of("MAJOR_TYPE_OPUS", "MAJOR_TYPE_DRAW", "MAJOR_TYPE_BLOCKED");
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final ObjectMapper json;
     private final String cookie;
