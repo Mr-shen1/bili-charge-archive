@@ -1,0 +1,95 @@
+name: ${COMPOSE_PROJECT_NAME:?set a unique project name}
+services:
+  mysql8:
+    image: mysql:8.4.11@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
+    command: ["--innodb-buffer-pool-size=128M", "--performance-schema=OFF"]
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?}
+      MYSQL_USER: ${MYSQL_USER:?}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    mem_limit: 512m
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -u root --silent"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  spring-app:
+    build: ../backend
+    environment:
+      DB_URL: jdbc:mysql://mysql8:3306/${MYSQL_DATABASE:?}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      DB_USERNAME: ${MYSQL_USER:?}
+      DB_PASSWORD: ${MYSQL_PASSWORD:?}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?}
+      ADMIN_PASSWORD_BCRYPT: ${ADMIN_PASSWORD_BCRYPT:?}
+      MONITOR_API_TOKEN: ${MONITOR_API_TOKEN:?}
+      FEISHU_WEBHOOK_ENC_KEY: ${FEISHU_WEBHOOK_ENC_KEY:?}
+      BILI_COOKIE: ${BILI_COOKIE:-}
+      OSS_REGION: ${OSS_REGION:-}
+      OSS_BUCKET: ${OSS_BUCKET:-}
+      OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:-}
+      OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET:-}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=60 -Xmx384m
+    depends_on:
+      mysql8:
+        condition: service_healthy
+    mem_limit: 640m
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+
+  nginx:
+    build: ../frontend
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ${DEPLOY_STATE_DIR:?}/acme-webroot:/var/www/acme:ro
+      - ${DEPLOY_STATE_DIR:?}/tls:/etc/nginx/tls:ro
+      - ${NGINX_CONFIG:?}:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${PUBLIC_BIND_IP:-0.0.0.0}:80:80"
+      - "${PUBLIC_BIND_IP:-0.0.0.0}:443:443"
+    depends_on:
+      spring-app:
+        condition: service_healthy
+    mem_limit: 64m
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  monitor:
+    profiles: ["monitor"]
+    build: ../monitor
+    environment:
+      MONITOR_INTERNAL_URL: http://spring-app:8080
+      MONITOR_API_TOKEN: ${MONITOR_API_TOKEN:?}
+      BILI_COOKIE: ${BILI_COOKIE:-}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+    depends_on:
+      spring-app:
+        condition: service_healthy
+    mem_limit: 384m
+    restart: unless-stopped
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mysql_data:

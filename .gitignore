@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+deploy/state/
 现有爬虫脚本/
 
 # Java

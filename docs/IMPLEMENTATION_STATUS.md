@@ -1,7 +1,7 @@
 # 实施状态
 
 - 更新日期：2026-09-27
-- 当前目标：[开发实施计划](IMPLEMENTATION_PLAN.md) M7 已完成本地实现与隔离联调；飞书通知证据见 [M7 验收记录](ACCEPTANCE_REPORT_M7.md)，此前的真实私有 OSS、签名和页面图片证据见 [M6 验收记录](ACCEPTANCE_REPORT_M6.md)。其他验收见 [M5 验收记录](ACCEPTANCE_REPORT_M5.md)、[M0～M2 回归记录](ACCEPTANCE_REPORT_M0_M2.md) 和 [M4 验收记录](ACCEPTANCE_REPORT_M4.md)
+- 当前目标：[开发实施计划](IMPLEMENTATION_PLAN.md) M8 生产部署包与隔离恢复演练已通过，证据见 [M8 验收记录](ACCEPTANCE_REPORT_M8.md)；目标主机上线仍属 M9。M7 飞书通知证据见 [M7 验收记录](ACCEPTANCE_REPORT_M7.md)，此前的真实私有 OSS、签名和页面图片证据见 [M6 验收记录](ACCEPTANCE_REPORT_M6.md)。其他验收见 [M5 验收记录](ACCEPTANCE_REPORT_M5.md)、[M0～M2 回归记录](ACCEPTANCE_REPORT_M0_M2.md) 和 [M4 验收记录](ACCEPTANCE_REPORT_M4.md)
 - 原始需求、参考图片和旧脚本均未改动；项目根目录的 `AGENTS.md` 已按用户后续要求提交
 
 ## 里程碑状态
@@ -16,7 +16,7 @@
 | M5 查询页面 | 已完成 | 内容查询、手机页面与分页数据浏览器验收通过；按已确认边界，UI-07 的 READY 图片实际显示归 M6 验证 |
 | M6 私有 OSS 图片 | 已完成 | 图片后台下载、私有上传和登录后签名访问已实现；真实测试 Bucket 的匿名拒绝、签名下载及过期检查和本地浏览器显示见 M6 验收记录 |
 | M7 飞书通知 | 本地阶段已完成 | 投递租约、动态路由、运维事件、重试与 90 天清理已实现；隔离库故障注入和用户指定测试群 ID 7 的三条真实飞书通知通过，详见 M7 验收记录；生产运行仍待 M8～M9 |
-| M8 部署包与恢复演练 | 未开始 | 待 M8 实施 |
+| M8 部署包与恢复演练 | 隔离阶段已完成 | 生产 Compose、IP HTTPS 引导与模拟续期、备份恢复、OSS Key 对账和 OPS-05 扫描通过；真实公网与目标主机仍待 M9，见 M8 验收记录 |
 | M9 服务器上线验收 | 未开始 | 待 M9 实施 |
 
 ## M0 技术版本与文件
@@ -146,3 +146,9 @@ M0 完成后按用户要求初始化本地 Git 仓库。旧脚本目录、环境
 - 删除一条专属路由而该 UP 仍有其他专属路由时，同一事务内作废刚转为历史的动态及评论未发通知；新增或更新专属路由仍按相同范围规则作废。V6 迁移清理此前删除路由后遗留的范围外待发事件，不删除已采集内容。
 - 本地开发库应用 V6 后，动态 `1251460007328743432` 的 1 条动态通知和 349 条评论通知均已作废，UP 待发数为 0；动态与 349 条评论仍在，页面详情接口返回历史标记。MySQL、Spring、Nginx 均为 healthy，monitor 未启动，未向飞书发送这些历史通知。
 - MySQL 8 隔离库完整后端回归共 39 项，38 项通过、1 项真实 OSS 测试因未向测试进程提供 OSS 配置而跳过，失败和错误均为 0；新增用例覆盖删除专属路由时同时作废动态与评论事件、保留内容。
+
+## M8 生产部署包与隔离演练
+
+- 新增独立生产 Compose、HTTP 引导/TLS Nginx 配置、占位环境样例、备份与隔离恢复、OSS Key 对账、模拟续期钩子、巡检和秘密扫描脚本；monitor 为显式 profile，普通启动不发送飞书。形成 [M9 上线检查表](M9_CUTOVER_CHECKLIST.md)，正式切换不在 M8 执行。
+- `m8_source` 和 `m8_restore` 在 Docker Desktop 上分别用独立 MySQL 卷运行，迁移到 V6；合成数据的 SQL 备份、SHA-256 校验、两条图片 Key 对账、恢复、非空库拒绝和服务健康均通过。恢复项目仅绑定主机回环地址的 80/443，无数据库或后端公网端口，无 monitor 容器。
+- ACME webroot、HTTP→HTTPS、模拟证书更新后 Nginx 测试与重载均通过；用模拟 Certbot 验证 renew → deploy hook 调用链。实际 Let's Encrypt 公网 IP 证书、自动计划任务、2 GB 主机峰值、真实 OSS 与新旧监控切换均须 M9 留证。完整命令与结果见 [M8 验收记录](ACCEPTANCE_REPORT_M8.md)。
