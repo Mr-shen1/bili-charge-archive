@@ -145,6 +145,39 @@ class AdminServiceTest extends MySqlTestBase {
                 Integer.class, historical)).isEqualTo(1);
     }
 
+    @Test
+    void deletingOneDedicatedRouteCancelsItsDynamicAndCommentNotifications() {
+        long group = group("delete-scope");
+        when(bili.previewUser(UID)).thenReturn(new BiliPreviewClient.User(UID, "测试 UP", ""));
+        service.createUp(UID, group, group, null);
+        when(bili.previewDynamic(UID, DYNAMIC_ID)).thenReturn(dynamic());
+        service.saveRoute(UID, DYNAMIC_ID, group, null);
+        jdbc.update("""
+                INSERT INTO dynamic(dynamic_id,up_uid,content_text,published_at,comment_oid,
+                                    comment_type,first_seen_at,last_seen_at)
+                VALUES(?,?, '历史',UTC_TIMESTAMP(3),'123',11,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))
+                """, DYNAMIC_ID, UID);
+        jdbc.update("""
+                INSERT INTO notification_event(dedupe_key,up_uid,dynamic_id,event_type,message_text,ready_at)
+                VALUES(?,?,?,'DYNAMIC','历史动态',UTC_TIMESTAMP(3))
+                """, "delete:dynamic:" + DYNAMIC_ID, UID, DYNAMIC_ID);
+        jdbc.update("""
+                INSERT INTO notification_event(dedupe_key,up_uid,dynamic_id,comment_rpid,event_type,message_text,ready_at)
+                VALUES(?,?,?,'123','COMMENT','历史评论',UTC_TIMESTAMP(3))
+                """, "delete:comment:" + DYNAMIC_ID, UID, DYNAMIC_ID);
+        jdbc.update("INSERT INTO dynamic_route(dynamic_id,up_uid,all_group_id) VALUES(?,?,?)",
+                DYNAMIC_ID + "1", UID, group);
+
+        assertThat(service.status(UID).pendingCount()).isEqualTo(2);
+        service.deleteRoute(UID, DYNAMIC_ID);
+
+        assertThat(service.status(UID).pendingCount()).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM notification_event WHERE dynamic_id=? AND canceled_at IS NOT NULL",
+                Integer.class, DYNAMIC_ID)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM dynamic WHERE dynamic_id=?",
+                Integer.class, DYNAMIC_ID)).isEqualTo(1);
+    }
+
     private BiliPreviewClient.Dynamic dynamic() {
         return new BiliPreviewClient.Dynamic(DYNAMIC_ID, UID, "测试 UP", "测试动态",
                 "DYNAMIC_TYPE_WORD", "MAJOR_TYPE_OPUS", "12345", 17);

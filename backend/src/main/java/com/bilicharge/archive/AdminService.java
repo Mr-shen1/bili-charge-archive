@@ -169,6 +169,8 @@ class AdminService {
         String dynamicId = parseId(dynamicIdInput, false);
         mapper.lockUp(uid);
         if (mapper.deleteRoute(uid, dynamicId) == 0) throw notFound("专属路由不存在");
+        // Deleting one of several targets makes its queued dynamic and comments historical.
+        mapper.cancelQueuedOutsideRoutes(uid);
     }
 
     UpStatus status(String uid) {
